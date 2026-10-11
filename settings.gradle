@@ -1,8 +1,10 @@
 pluginManagement {
-	repositories {
-		maven { url = 'https://maven.fabricmc.net/' }
-		gradlePluginPortal()
-	}
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+        gradlePluginPortal()
+    }
 }
 
 plugins {
@@ -13,9 +15,12 @@ rootProject.name = 'ringworld'
 
 def ringBackportCompilerScope = providers.gradleProperty('ringBackportCompilerScope')
         .orElse('all').get()
-if (!(ringBackportCompilerScope in ['all', 'fabric'])) {
-    throw new GradleException('ringBackportCompilerScope must be all or fabric')
+if (!(ringBackportCompilerScope in ['all', 'fabric', 'forge1201'])) {
+    throw new GradleException('ringBackportCompilerScope must be all, fabric, or forge1201')
 }
 if (ringBackportCompilerScope == 'all') {
     include 'neoforge'
+    include 'forge1201'
+} else if (ringBackportCompilerScope == 'forge1201') {
+    include 'forge1201'
 }
