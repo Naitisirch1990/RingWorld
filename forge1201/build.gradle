@@ -96,6 +96,9 @@ processResources {
 }
 
 jar {
+    from(rootProject.file('LICENSE')) {
+        rename { 'LICENSE-RINGWORLD.txt' }
+    }
     manifest {
         attributes([
                 'Specification-Title'   : 'RingWorld',
