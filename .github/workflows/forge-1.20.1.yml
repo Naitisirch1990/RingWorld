@@ -49,6 +49,7 @@ jobs:
             dev/ringworld/platform/forge1201/client/Forge1201ClientChunkMapAccess.class \
             dev/ringworld/platform/forge1201/client/Forge1201ClientChunkMaps.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkMapMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201CanonicalChunkHolderMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkGenerationLookupMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ServerChunkCacheMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkTrackerMixin.class \
@@ -104,7 +105,31 @@ jobs:
           [[ -f "$LOG" ]] && tail -n 300 "$LOG"
           exit 1
 
+      - name: Diagnose generated region files
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          region_dir = Path('forge1201/run-server/world/region')
+          if not region_dir.is_dir():
+              print('No Overworld region directory was produced.')
+              raise SystemExit(0)
+          print('Overworld region-file diagnostics:')
+          for path in sorted(region_dir.glob('r.*.*.mca')):
+              size = path.stat().st_size
+              used = 0
+              with path.open('rb') as handle:
+                  header = handle.read(4096)
+              if len(header) == 4096:
+                  used = sum(1 for (entry,) in struct.iter_unpack('>I', header) if entry != 0)
+              print(f'{path.name}: bytes={size} allocated_chunks={used}')
+          PY
+
       - name: Smoke boot Forge client mixins
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
@@ -127,10 +152,13 @@ jobs:
           [[ -f "$LOG" ]] && tail -n 350 "$LOG"
           exit 1
 
-      - name: Upload diagnostic jars
-        if: success()
+      - name: Upload diagnostic build and generated world
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ringworld-forge-1.20.1-diagnostic
-          path: forge1201/build/libs/*.jar
-          if-no-files-found: error
+          path: |
+            forge1201/build/libs/*.jar
+            forge1201/run-server/world
+            forge1201/run-server/logs/latest.log
+          if-no-files-found: warn
