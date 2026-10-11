@@ -8,6 +8,7 @@ import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -30,8 +31,7 @@ public final class Forge1201RingRuntime {
     @SubscribeEvent
     public static void onLevelLoad(LevelEvent.Load event) {
         if (!(event.getLevel() instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
-        RingGeometry geometry = RingWorldSettings.get(level).geometry();
-        GEOMETRY.put(level, geometry);
+        RingGeometry geometry = attach(level);
         RingWorldMod.LOGGER.info(
                 "Forge 1.20.1 RingWorld runtime attached: circumference={} width={} chunks={}x{}",
                 geometry.circumferenceBlocks(), geometry.widthBlocks(),
@@ -50,12 +50,27 @@ public final class Forge1201RingRuntime {
         if (event.phase != TickEvent.Phase.END) return;
         if (!(event.level instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
 
-        RingGeometry geometry = GEOMETRY.computeIfAbsent(level,
-                world -> RingWorldSettings.get(world).geometry());
+        RingGeometry geometry = GEOMETRY.computeIfAbsent(level, Forge1201RingRuntime::attach);
         for (Entity entity : level.getAllEntities()) {
             double sourceX = entity.getX();
             if (!geometry.needsCanonicalWrap(sourceX)) continue;
             entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
         }
+    }
+
+    private static RingGeometry attach(ServerLevel level) {
+        RingWorldSettings settings = RingWorldSettings.get(level);
+        RingGeometry geometry = settings.geometry();
+        ChunkGenerator generator = level.getChunkSource().getGenerator();
+        if (generator instanceof Forge1201GeneratorAccess access) {
+            access.ringworld1201$setGeometry(geometry);
+            access.ringworld1201$setWallHeight(settings.wallHeightBlocks());
+        } else {
+            RingWorldMod.LOGGER.warn(
+                    "Forge 1.20.1 Overworld generator does not expose RingWorld geometry yet: {}",
+                    generator.getClass().getName());
+        }
+        GEOMETRY.put(level, geometry);
+        return geometry;
     }
 }
