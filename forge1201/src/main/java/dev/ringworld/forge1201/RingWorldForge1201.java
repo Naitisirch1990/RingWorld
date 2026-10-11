@@ -5,6 +5,7 @@ import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldLayouts;
 import dev.ringworld.world.RingWorldSettings;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -22,6 +23,11 @@ public final class RingWorldForge1201 {
                 RingWorldLayouts.OVERWORLD.circumferenceBlocks(), RingWorldLayouts.OVERWORLD.widthBlocks(),
                 RingWorldLayouts.NETHER.circumferenceBlocks(), RingWorldLayouts.NETHER.widthBlocks(),
                 RingWorldLayouts.END.circumferenceBlocks(), RingWorldLayouts.END.widthBlocks());
+    }
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        RingWorldCommands.register(event);
     }
 
     @SubscribeEvent
