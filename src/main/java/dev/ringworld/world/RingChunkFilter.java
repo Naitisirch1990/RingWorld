@@ -3,13 +3,12 @@ package dev.ringworld.world;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import java.util.function.Consumer;
-import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.world.level.ChunkPos;
 
 /** A vanilla-shaped view window whose X axis is a finite periodic graph. */
 public record RingChunkFilter(ChunkPos center, int logicalCenterX,
                               int viewDistance, int circumferenceChunks,
-                              int minChunkZ, int maxChunkZ) implements ChunkTrackingView {
+                              int minChunkZ, int maxChunkZ) implements RingChunkView {
     public RingChunkFilter(ChunkPos logicalCenter, int viewDistance, RingGeometry geometry) {
         this(logicalCenter, viewDistance, geometry.circumferenceChunks(),
                 geometry.minChunkZ(), geometry.maxChunkZ());
@@ -57,8 +56,8 @@ public record RingChunkFilter(ChunkPos center, int logicalCenterX,
         }
     }
 
-    /** Diffs any two filters without relying on vanilla's flat-cylinder fast path. */
-    public static void forEachChanged(ChunkTrackingView oldFilter, ChunkTrackingView newFilter,
+    /** Diffs any two periodic views without relying on a Minecraft-version-specific fast path. */
+    public static void forEachChanged(RingChunkView oldFilter, RingChunkView newFilter,
                                       Consumer<ChunkPos> newlyIncluded, Consumer<ChunkPos> justRemoved) {
         if (oldFilter.equals(newFilter)) return;
         if (oldFilter instanceof RingChunkFilter oldRing && newFilter instanceof RingChunkFilter newRing) {
@@ -98,7 +97,7 @@ public record RingChunkFilter(ChunkPos center, int logicalCenterX,
         return periodicDistance > overlapDiameter;
     }
 
-    private static LongSet collect(ChunkTrackingView filter) {
+    private static LongSet collect(RingChunkView filter) {
         LongSet chunks = new LongOpenHashSet();
         filter.forEach(pos -> chunks.add(pos.toLong()));
         return chunks;
