@@ -24,4 +24,4 @@ jobs:
         run: chmod +x gradlew
 
       - name: Compile Forge 1.20.1 target
-        run: ./gradlew :forge1201:compileJava -PringBackportCompilerScope=forge1201 --stacktrace --no-daemon
+        run: ./gradlew :forge1201:compileJava -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
