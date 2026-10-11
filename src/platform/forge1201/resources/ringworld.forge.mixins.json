@@ -10,6 +10,7 @@
     "Forge1201NoiseChunkMixin",
     "Forge1201ChunkGeneratorMixin",
     "Forge1201ChunkMapMixin",
+    "Forge1201CanonicalChunkHolderMixin",
     "Forge1201ChunkGenerationLookupMixin",
     "Forge1201ServerChunkCacheMixin",
     "Forge1201ChunkTrackerMixin",
