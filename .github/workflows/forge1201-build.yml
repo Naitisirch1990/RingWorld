@@ -43,6 +43,32 @@ jobs:
       - name: Build Forge jar
         run: gradle -p forge1201 build --stacktrace
 
+      - name: Boot dedicated server and load worldgen mixins
+        shell: bash
+        run: |
+          mkdir -p forge1201/run
+          printf 'eula=true\n' > forge1201/run/eula.txt
+          set +e
+          timeout 90s gradle -p forge1201 runServer --console=plain --args='nogui' \
+            > forge1201/run/smoke-server.log 2>&1
+          status=$?
+          set -e
+          cat forge1201/run/smoke-server.log
+          if grep -q 'Done (' forge1201/run/smoke-server.log; then
+            echo 'Forge dedicated-server smoke test reached the ready state.'
+            exit 0
+          fi
+          echo "Dedicated server did not reach ready state; gradle status=${status}."
+          exit 1
+
+      - name: Upload server smoke log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ringworld-forge-1.20.1-smoke-log
+          path: forge1201/run/smoke-server.log
+          if-no-files-found: ignore
+
       - name: Upload development jar
         if: success()
         uses: actions/upload-artifact@v4
