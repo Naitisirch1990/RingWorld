@@ -1,8 +1,12 @@
 package dev.ringworld.forge1201;
 
 import com.mojang.logging.LogUtils;
+import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldLayouts;
+import dev.ringworld.world.RingWorldSettings;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 
@@ -18,5 +22,20 @@ public final class RingWorldForge1201 {
                 RingWorldLayouts.OVERWORLD.circumferenceBlocks(), RingWorldLayouts.OVERWORLD.widthBlocks(),
                 RingWorldLayouts.NETHER.circumferenceBlocks(), RingWorldLayouts.NETHER.widthBlocks(),
                 RingWorldLayouts.END.circumferenceBlocks(), RingWorldLayouts.END.widthBlocks());
+    }
+
+    @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        RingWorldSettings settings = RingWorldSettings.get(event.getServer().overworld());
+        RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.overworld());
+        RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.nether());
+        RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.end());
+        LOGGER.info(
+                "RingWorld saved layout ready (seed={}): Overworld={}x{}, Nether={}x{}, End={}x{}, terrainMapping={}",
+                settings.generatorSeed(),
+                settings.overworld().circumferenceBlocks(), settings.overworld().widthBlocks(),
+                settings.nether().circumferenceBlocks(), settings.nether().widthBlocks(),
+                settings.end().circumferenceBlocks(), settings.end().widthBlocks(),
+                RingTerrainNoiseMapping.diagnosticName(RingTerrainNoiseMapping.CURRENT));
     }
 }
