@@ -29,6 +29,10 @@ public final class RingWorldLayouts {
             }
         }
 
+        public double radius() {
+            return circumferenceBlocks / (2.0 * Math.PI);
+        }
+
         public int circumferenceChunks() {
             return circumferenceBlocks / 16;
         }
