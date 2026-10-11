@@ -4,7 +4,10 @@
   "package": "dev.ringworld.platform.forge1201.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "ringworld.refmap.json",
-  "mixins": [],
+  "mixins": [
+    "Forge1201NoiseGeneratorMixin",
+    "Forge1201ChunkGeneratorMixin"
+  ],
   "client": [],
   "injectors": {
     "defaultRequire": 1
