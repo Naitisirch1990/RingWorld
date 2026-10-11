@@ -1,0 +1,30 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="${mod_license}"
+issueTrackerURL="https://github.com/Delaser/RingWorld/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+displayTest="MATCH_VERSION"
+description='''
+Forge 1.20.1 custom backport of RingWorld. This branch first restores the periodic ring topology,
+then adds the custom 61,440 x 2,000 Overworld, 30,720 x 2,000 Nether, 61,440 x 2,000 End,
+finite side boundaries, roads, landmarks, and authored mega-structures.
+'''
+
+[[dependencies.${mod_id}]]
+modId="forge"
+mandatory=true
+versionRange="[${forge_version},48)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+mandatory=true
+versionRange="[${minecraft_version},1.20.2)"
+ordering="NONE"
+side="BOTH"
