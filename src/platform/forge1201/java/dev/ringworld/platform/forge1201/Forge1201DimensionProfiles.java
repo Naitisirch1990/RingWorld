@@ -12,6 +12,15 @@ public final class Forge1201DimensionProfiles {
     public static final int END_CIRCUMFERENCE = 61_440;
     public static final int LEGACY_WALL_HEIGHT_BLOCKS = 160;
 
+    /*
+     * These bootstrap geometries deliberately exist independently of saved-data
+     * and the live ChunkGenerator. Chunk holder/ticket storage starts while a
+     * ServerLevel is still being wired, before LevelEvent.Load has necessarily
+     * attached the full RingWorld runtime. The finite canonical chunk graph
+     * therefore needs a side-effect-free geometry source at that earlier stage.
+     */
+    private static final RingGeometry OVERWORLD_GEOMETRY =
+            new RingGeometry(WIDTH_BLOCKS, OVERWORLD_CIRCUMFERENCE);
     private static final RingGeometry NETHER_GEOMETRY =
             new RingGeometry(WIDTH_BLOCKS, NETHER_CIRCUMFERENCE);
     private static final RingGeometry END_GEOMETRY =
@@ -23,6 +32,18 @@ public final class Forge1201DimensionProfiles {
         return level.dimension() == Level.OVERWORLD
                 || level.dimension() == Level.NETHER
                 || level.dimension() == Level.END;
+    }
+
+    /**
+     * Side-effect-free geometry for low-level chunk storage during level bootstrap.
+     * The project layout is fixed to these three profiles; persisted Overworld
+     * settings are validated/attached later by {@link Forge1201RingRuntime}.
+     */
+    public static RingGeometry bootstrapGeometry(ServerLevel level) {
+        if (level.dimension() == Level.OVERWORLD) return OVERWORLD_GEOMETRY;
+        if (level.dimension() == Level.NETHER) return NETHER_GEOMETRY;
+        if (level.dimension() == Level.END) return END_GEOMETRY;
+        return null;
     }
 
     /** Overworld geometry is persisted in RingWorldSettings; the other two are fixed project profiles. */
