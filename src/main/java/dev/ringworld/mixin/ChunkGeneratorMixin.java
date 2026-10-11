@@ -30,12 +30,13 @@ abstract class ChunkGeneratorMixin {
     }
 
     @Inject(method = "applyBiomeDecoration", at = @At("TAIL"))
-    private void ringworld$buildRimAfterFeatures(WorldGenLevel world, ChunkAccess chunk,
-                                                 StructureManager structures, CallbackInfo ci) {
+    private void ringworld$buildBoundaryAfterFeatures(WorldGenLevel world, ChunkAccess chunk,
+                                                      StructureManager structures, CallbackInfo ci) {
         RingWorldGeneratorAccess access = ringworld$access();
         if (access == null) return;
         RingGeometry geometry = access.ringworld$getGeometry();
         if (geometry != null) {
+            RingGenerationBoundary.installBedrockFloor(chunk, geometry);
             RingGenerationBoundary.installRim(chunk, geometry, access.ringworld$getWallHeight());
         }
     }
