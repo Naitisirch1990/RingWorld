@@ -78,11 +78,24 @@ public final class Forge1201RingRuntime {
         }
         for (Entity entity : toWrap) {
             if (entity.isRemoved() || entity.level() != level) continue;
-            double sourceX = entity.getX();
-            if (geometry.needsCanonicalWrap(sourceX)) {
-                entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
-            }
+            canonicalizeEntityPosition(entity, geometry);
         }
+    }
+
+    /**
+     * Folds one entity into canonical X storage and returns the exact X shift.
+     * Callers that keep anti-cheat or interpolation baselines can apply the
+     * same shift without turning a seam crossing into a circumference-sized
+     * movement on the following tick.
+     */
+    public static double canonicalizeEntityPosition(Entity entity, RingGeometry geometry) {
+        if (entity == null || geometry == null) return 0.0;
+        double sourceX = entity.getX();
+        if (!geometry.needsCanonicalWrap(sourceX)) return 0.0;
+        double targetX = geometry.wrapX(sourceX);
+        double shift = targetX - sourceX;
+        entity.setPos(targetX, entity.getY(), entity.getZ());
+        return shift;
     }
 
     /** Allocation-free geometry lookup for Forge 1.20.1 server hot paths. */
