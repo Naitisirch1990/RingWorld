@@ -12,6 +12,7 @@
     "Forge1201ChunkMapMixin",
     "Forge1201WorldEntityLookupMixin",
     "Forge1201EntityNavigationMixin",
+    "Forge1201ExplosionMixin",
     "Forge1201ServerGamePacketListenerMixin",
     "Forge1201EntityDistanceMixin",
     "Forge1201ProjectileUtilMixin"
