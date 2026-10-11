@@ -10,6 +10,7 @@
     "Forge1201NoiseChunkMixin",
     "Forge1201ChunkGeneratorMixin",
     "Forge1201ChunkMapMixin",
+    "Forge1201ServerChunkCacheMixin",
     "Forge1201WorldEntityLookupMixin",
     "Forge1201EntityNavigationMixin",
     "Forge1201ExplosionMixin",
