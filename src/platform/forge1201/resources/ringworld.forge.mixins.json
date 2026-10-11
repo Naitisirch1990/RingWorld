@@ -26,7 +26,9 @@
     "Forge1201EntityDistanceMixin",
     "Forge1201ProjectileUtilMixin"
   ],
-  "client": [],
+  "client": [
+    "Forge1201ClientPacketListenerMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
