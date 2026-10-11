@@ -19,20 +19,22 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseChunk;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;
+import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.WorldgenRandom;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Minecraft 1.20.1 noise-generator bridge for the custom ring policy.
- * Exterior chunk rows are kept empty, while interior NoiseChunk construction
- * receives a ring-wrapped density router so X=0 and X=circumference sample one
- * continuous annular noise domain rather than two unrelated flat-world edges.
+ * Exterior chunk rows are kept empty, while every terrain-critical horizontal
+ * sampling path uses one cached annular router for the attached dimension.
  */
 @Mixin(NoiseBasedChunkGenerator.class)
 public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGeneratorAccess {
@@ -42,9 +44,19 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
     @Unique
     private int ringworld$terrainNoiseMapping = RingTerrainNoiseMapping.CURRENT;
 
+    @Unique
+    private RandomState ringworld$cachedNoiseState;
+
+    @Unique
+    private NoiseRouter ringworld$cachedRouter;
+
     @Override
     public void ringworld$setLayout(RingWorldLayouts.RingLayout layout) {
+        if (this.ringworld$layout == layout || (layout != null && layout.equals(this.ringworld$layout))) {
+            return;
+        }
         this.ringworld$layout = layout;
+        ringworld$clearRouterCache();
     }
 
     @Override
@@ -54,7 +66,10 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
 
     @Override
     public void ringworld$setTerrainNoiseMapping(int mappingVersion) {
-        this.ringworld$terrainNoiseMapping = RingTerrainNoiseMapping.requireSupported(mappingVersion);
+        int supported = RingTerrainNoiseMapping.requireSupported(mappingVersion);
+        if (this.ringworld$terrainNoiseMapping == supported) return;
+        this.ringworld$terrainNoiseMapping = supported;
+        ringworld$clearRouterCache();
     }
 
     @Override
@@ -75,6 +90,18 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
         }
     }
 
+    /** Biome climate noise must use the same periodic graph as terrain density. */
+    @Redirect(
+            method = "doCreateBiomes",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/levelgen/RandomState;router()Lnet/minecraft/world/level/levelgen/NoiseRouter;"))
+    private NoiseRouter ringworld$periodicBiomeRouter(RandomState randomState) {
+        return ringworld$layout == null
+                ? randomState.router()
+                : ringworld$getOrCreatePeriodicRouter(randomState);
+    }
+
     @Redirect(
             method = "createNoiseChunk",
             at = @At(
@@ -87,12 +114,10 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
             NoiseGeneratorSettings settings,
             Aquifer.FluidPicker fluidPicker,
             Blender blender) {
-        if (ringworld$layout == null) {
-            return NoiseChunk.forChunk(chunk, randomState, beardifier, settings, fluidPicker, blender);
-        }
-        NoiseRouter periodicRouter = RingNoiseRouter.wrap(
-                randomState.router(), ringworld$layout, ringworld$terrainNoiseMapping);
-        return RingNoiseSamplingContext.withRouter(periodicRouter,
+        NoiseRouter override = ringworld$layout == null
+                ? null
+                : ringworld$getOrCreatePeriodicRouter(randomState);
+        return RingNoiseSamplingContext.withRouter(override,
                 () -> NoiseChunk.forChunk(
                         chunk, randomState, beardifier, settings, fluidPicker, blender));
     }
@@ -118,6 +143,75 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
             GenerationStep.Carving carving,
             CallbackInfo ci) {
         if (ringworld$isExterior(chunk)) ci.cancel();
+    }
+
+    /** A cave crossing X=0 must retain the same random identity on both seam charts. */
+    @Redirect(
+            method = "applyCarvers",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/levelgen/WorldgenRandom;setLargeFeatureSeed(JII)V"))
+    private void ringworld$periodicCarverSeed(
+            WorldgenRandom random,
+            long seed,
+            int sourceChunkX,
+            int sourceChunkZ) {
+        int seedChunkX = ringworld$layout == null
+                ? sourceChunkX
+                : RingTerrainNoiseMapping.carverSeedChunkX(
+                        ringworld$layout, ringworld$terrainNoiseMapping, sourceChunkX);
+        random.setLargeFeatureSeed(seed, seedChunkX, sourceChunkZ);
+    }
+
+    /** Height queries used by structure anchors must share canonical X ownership. */
+    @ModifyVariable(
+            method = "iterateNoiseColumn",
+            at = @At("HEAD"),
+            argsOnly = true,
+            ordinal = 0,
+            require = 1)
+    private int ringworld$canonicalizeHeightQueryX(int blockX) {
+        return ringworld$layout == null ? blockX : ringworld$layout.wrapBlockX(blockX);
+    }
+
+    @Redirect(
+            method = "iterateNoiseColumn",
+            at = @At(
+                    value = "NEW",
+                    target = "(ILnet/minecraft/world/level/levelgen/RandomState;IILnet/minecraft/world/level/levelgen/NoiseSettings;Lnet/minecraft/world/level/levelgen/DensityFunctions$BeardifierOrMarker;Lnet/minecraft/world/level/levelgen/NoiseGeneratorSettings;Lnet/minecraft/world/level/levelgen/Aquifer$FluidPicker;Lnet/minecraft/world/level/levelgen/blending/Blender;)Lnet/minecraft/world/level/levelgen/NoiseChunk;"))
+    private NoiseChunk ringworld$createPeriodicHeightSampler(
+            int cellCountXZ,
+            RandomState randomState,
+            int firstBlockX,
+            int firstBlockZ,
+            NoiseSettings noiseSettings,
+            DensityFunctions.BeardifierOrMarker beardifier,
+            NoiseGeneratorSettings settings,
+            Aquifer.FluidPicker fluidPicker,
+            Blender blender) {
+        NoiseRouter override = ringworld$layout == null
+                ? null
+                : ringworld$getOrCreatePeriodicRouter(randomState);
+        return RingNoiseSamplingContext.withRouter(override,
+                () -> new NoiseChunk(
+                        cellCountXZ, randomState, firstBlockX, firstBlockZ,
+                        noiseSettings, beardifier, settings, fluidPicker, blender));
+    }
+
+    @Unique
+    private synchronized NoiseRouter ringworld$getOrCreatePeriodicRouter(RandomState randomState) {
+        if (ringworld$cachedNoiseState != randomState || ringworld$cachedRouter == null) {
+            ringworld$cachedNoiseState = randomState;
+            ringworld$cachedRouter = RingNoiseRouter.wrap(
+                    randomState.router(), ringworld$layout, ringworld$terrainNoiseMapping);
+        }
+        return ringworld$cachedRouter;
+    }
+
+    @Unique
+    private synchronized void ringworld$clearRouterCache() {
+        ringworld$cachedNoiseState = null;
+        ringworld$cachedRouter = null;
     }
 
     @Unique
