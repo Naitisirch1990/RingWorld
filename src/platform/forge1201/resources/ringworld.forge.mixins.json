@@ -27,7 +27,8 @@
     "Forge1201ProjectileUtilMixin"
   ],
   "client": [
-    "Forge1201ClientPacketListenerMixin"
+    "Forge1201ClientPacketListenerMixin",
+    "Forge1201ClientConnectionMixin"
   ],
   "injectors": {
     "defaultRequire": 1
