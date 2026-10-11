@@ -19,15 +19,16 @@ public final class ForgeRingWorldMod {
         boolean freshInstall = Files.notExists(configDirectory.resolve("ringworld.properties"));
         RingWorldConfig.configureDirectory(configDirectory);
         if (freshInstall) {
-            // The old fixed wall-height field is retained only while the 1.20.1
-            // generation boundary is being ported. The final project boundary
-            // raises bedrock ten blocks above local terrain and adds an exterior
-            // full-height barrier layer.
+            // The old fixed wall-height field is retained only as saved-format
+            // compatibility. The Forge 1.20.1 generation boundary now raises
+            // bedrock ten blocks above local terrain and adds a full-height
+            // barrier behind it.
             RingWorldConfig.saveBootstrapLayout(
                     PROJECT_WIDTH, PROJECT_CIRCUMFERENCE, 160, false);
         } else {
             RingWorldConfig.load();
         }
+        Forge1201RingNetwork.register();
         RingWorldMod.LOGGER.info(
                 "RingWorld Forge 1.20.1 bootstrap active (project layout {}x{})",
                 PROJECT_CIRCUMFERENCE, PROJECT_WIDTH);
