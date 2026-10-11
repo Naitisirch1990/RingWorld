@@ -1,0 +1,104 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:6.0.+'
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.spongepowered.mixin'
+apply plugin: 'maven-publish'
+
+version = rootProject.forge_1201_mod_version
+group = rootProject.maven_group
+
+base {
+    archivesName = rootProject.archives_base_name + '-forge-1.20.1'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
+}
+
+sourceSets.main.java.setSrcDirs([
+        rootProject.file('src/main/java'),
+        rootProject.file('src/client/java'),
+        rootProject.file('src/platform/forge1201/java')
+])
+sourceSets.main.resources.setSrcDirs([
+        rootProject.file('src/main/resources'),
+        rootProject.file('src/client/resources'),
+        rootProject.file('src/platform/forge1201/resources')
+])
+sourceSets.main.resources.exclude('fabric.mod.json')
+
+minecraft {
+    mappings channel: 'official', version: rootProject.forge_1201_minecraft_version
+    copyIdeResources = true
+
+    runs {
+        client {
+            workingDirectory project.file('run-client')
+            property 'forge.logging.console.level', 'info'
+            mods {
+                ringworld {
+                    source sourceSets.main
+                }
+            }
+        }
+        server {
+            workingDirectory project.file('run-server')
+            property 'forge.logging.console.level', 'info'
+            args 'nogui'
+            mods {
+                ringworld {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${rootProject.forge_1201_minecraft_version}-${rootProject.forge_1201_version}"
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+mixin {
+    add sourceSets.main, 'ringworld.refmap.json'
+    config 'ringworld.mixins.json'
+    config 'ringworld.client.mixins.json'
+    config 'ringworld.forge.mixins.json'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/mods.toml') {
+        expand version: project.version
+    }
+}
+
+jar {
+    manifest {
+        attributes([
+                'Specification-Title'   : 'RingWorld',
+                'Specification-Vendor'  : 'Delaser / unofficial 1.20.1 backport',
+                'Specification-Version' : '1',
+                'Implementation-Title'  : project.name,
+                'Implementation-Version': project.version,
+                'MixinConfigs'          : 'ringworld.mixins.json,ringworld.client.mixins.json,ringworld.forge.mixins.json'
+        ])
+    }
+    finalizedBy 'reobfJar'
+}
