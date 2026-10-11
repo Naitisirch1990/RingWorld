@@ -5,7 +5,9 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "ringworld.refmap.json",
   "mixins": [
+    "Forge1201DensityCoordinateConsumerMixin",
     "Forge1201NoiseGeneratorMixin",
+    "Forge1201NoiseChunkMixin",
     "Forge1201ChunkGeneratorMixin",
     "Forge1201ChunkMapMixin",
     "Forge1201ServerGamePacketListenerMixin",
