@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MPL-2.0"
+displayTest="MATCH_VERSION"
+
+[[mods]]
+modId="ringworld"
+version="${version}"
+displayName="RingWorld - Unofficial Forge 1.20.1 Backport"
+description='''
+Unofficial Forge 1.20.1 backport of RingWorld, preserving the periodic ring topology while adapting the loader and Minecraft API boundary.
+'''
+authors="Delaser; unofficial 1.20.1 backport maintained in this fork"
+
+[[dependencies.ringworld]]
+modId="forge"
+mandatory=true
+versionRange="[47.4.10,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.ringworld]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.20.2)"
+ordering="NONE"
+side="BOTH"
