@@ -8,9 +8,9 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
-/** Forge 1.20.1 wire adapter for RingWorld's immutable layout identity. */
+/** Forge 1.20.1 wire adapter for the three RingWorld dimension profiles. */
 public final class Forge1201RingNetwork {
-    private static final String PROTOCOL = "ringworld-settings-v3-forge1201";
+    private static final String PROTOCOL = "ringworld-settings-v4-forge1201";
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(RingWorldMod.MOD_ID, "settings"),
             () -> PROTOCOL,
@@ -35,10 +35,11 @@ public final class Forge1201RingNetwork {
     public static void sendSettings(ServerPlayer player, RingWorldSettings settings) {
         register();
         Forge1201SettingsPacket packet = new Forge1201SettingsPacket(
-                settings.widthBlocks(), settings.circumferenceBlocks(), settings.generatorSeed(),
-                settings.wallHeightBlocks(), settings.surfaceReferenceY(),
-                settings.terrainNoiseMapping(), settings.formatVersion(),
-                settings.layoutFingerprint());
+                settings.widthBlocks(), settings.circumferenceBlocks(),
+                Forge1201DimensionProfiles.WIDTH_BLOCKS, Forge1201DimensionProfiles.NETHER_CIRCUMFERENCE,
+                Forge1201DimensionProfiles.WIDTH_BLOCKS, Forge1201DimensionProfiles.END_CIRCUMFERENCE,
+                settings.generatorSeed(), settings.wallHeightBlocks(), settings.surfaceReferenceY(),
+                settings.terrainNoiseMapping(), settings.formatVersion(), settings.layoutFingerprint());
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 }
