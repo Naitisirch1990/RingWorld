@@ -7,6 +7,7 @@ import dev.ringworld.platform.forge1201.client.Forge1201ClientChunkMaps;
 import dev.ringworld.world.RingGeometry;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import net.minecraft.client.Minecraft;
@@ -20,19 +21,25 @@ import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockEventPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundChunksBiomesPacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
 import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
 import net.minecraft.network.protocol.game.ClientboundOpenSignEditorPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerLookAtPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundSetChunkCacheCenterPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.world.entity.RelativeMovement;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -143,6 +150,65 @@ abstract class Forge1201ClientPacketListenerMixin {
         return Forge1201ClientTopology.mapBlockPos(packet.getPos());
     }
 
+    @ModifyVariable(method = "handleParticleEvent", at = @At("HEAD"), argsOnly = true)
+    private ClientboundLevelParticlesPacket ringworld1201$mapParticle(ClientboundLevelParticlesPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread()) return packet;
+        double x = mapWorldX(packet.getX());
+        if (x == packet.getX()) return packet;
+        return new ClientboundLevelParticlesPacket(packet.getParticle(), packet.isOverrideLimiter(),
+                x, packet.getY(), packet.getZ(), packet.getXDist(), packet.getYDist(), packet.getZDist(),
+                packet.getMaxSpeed(), packet.getCount());
+    }
+
+    @Redirect(method = "handleExplosion", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/protocol/game/ClientboundExplodePacket;getX()D"))
+    private double ringworld1201$mapExplosionX(ClientboundExplodePacket packet) {
+        return mapWorldX(packet.getX());
+    }
+
+    @Redirect(method = "handleExplosion", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/protocol/game/ClientboundExplodePacket;getToBlow()Ljava/util/List;"))
+    private List<BlockPos> ringworld1201$mapExplosionBlocks(ClientboundExplodePacket packet) {
+        return packet.getToBlow().stream().map(Forge1201ClientTopology::mapBlockPos).toList();
+    }
+
+    @ModifyVariable(method = "handleSoundEvent", at = @At("HEAD"), argsOnly = true)
+    private ClientboundSoundPacket ringworld1201$mapSound(ClientboundSoundPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread()) return packet;
+        double x = mapWorldX(packet.getX());
+        if (x == packet.getX()) return packet;
+        return new ClientboundSoundPacket(packet.getSound(), packet.getSource(), x, packet.getY(), packet.getZ(),
+                packet.getVolume(), packet.getPitch(), packet.getSeed());
+    }
+
+    @ModifyVariable(method = "handleDamageEvent", at = @At("HEAD"), argsOnly = true)
+    private ClientboundDamageEventPacket ringworld1201$mapDamageSource(ClientboundDamageEventPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread() || minecraft.level == null || minecraft.player == null) return packet;
+        Optional<Vec3> source = packet.sourcePosition();
+        if (source.isEmpty()) return packet;
+        RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
+        if (geometry == null) return packet;
+        Vec3 position = source.get();
+        var damagedEntity = minecraft.level.getEntity(packet.entityId());
+        double referenceX = damagedEntity == null ? minecraft.player.getX() : damagedEntity.getX();
+        double x = geometry.nearestImageX(position.x, referenceX);
+        if (x == position.x) return packet;
+        return new ClientboundDamageEventPacket(packet.entityId(), packet.sourceTypeId(),
+                packet.sourceCauseId(), packet.sourceDirectId(), Optional.of(new Vec3(x, position.y, position.z)));
+    }
+
+    @Redirect(method = "handleLookAt", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/network/protocol/game/ClientboundPlayerLookAtPacket;getPosition(Lnet/minecraft/world/level/Level;)Lnet/minecraft/world/phys/Vec3;"))
+    private Vec3 ringworld1201$mapLookTarget(ClientboundPlayerLookAtPacket packet, Level level) {
+        Vec3 position = packet.getPosition(level);
+        if (position == null) return null;
+        double x = mapWorldX(position.x);
+        return x == position.x ? position : new Vec3(x, position.y, position.z);
+    }
+
     @ModifyVariable(method = "handleAddEntity", at = @At("HEAD"), argsOnly = true)
     private ClientboundAddEntityPacket ringworld1201$projectEntitySpawn(ClientboundAddEntityPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -211,10 +277,16 @@ abstract class Forge1201ClientPacketListenerMixin {
                 packet.getYRot(), packet.getXRot(), Set.copyOf(projected), packet.getId());
     }
 
+    private static double mapWorldX(double canonicalX) {
+        Minecraft minecraft = Minecraft.getInstance();
+        RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
+        if (geometry == null || minecraft.player == null) return canonicalX;
+        return geometry.nearestImageX(canonicalX, minecraft.player.getX());
+    }
+
     private static void rekeyClientChart(Minecraft minecraft, int nextChunkX, int nextChunkZ) {
         if (minecraft.level == null) return;
-        Forge1201ClientChunkMapAccess access =
-                Forge1201ClientChunkMaps.get(minecraft.level.getChunkSource());
+        Forge1201ClientChunkMapAccess access = Forge1201ClientChunkMaps.get(minecraft.level.getChunkSource());
         if (access == null) return;
 
         int viewDistance = minecraft.options.renderDistance().get();
