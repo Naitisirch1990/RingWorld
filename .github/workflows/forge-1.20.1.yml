@@ -45,6 +45,9 @@ jobs:
           for entry in META-INF/mods.toml ringworld.forge.mixins.json ringworld.refmap.json \
             dev/ringworld/platform/forge1201/Forge1201DimensionProfiles.class \
             dev/ringworld/platform/forge1201/Forge1201RingRuntime.class \
+            dev/ringworld/platform/forge1201/Forge1201ClientTopology.class \
+            dev/ringworld/platform/forge1201/client/Forge1201ClientChunkMapAccess.class \
+            dev/ringworld/platform/forge1201/client/Forge1201ClientChunkMaps.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkMapMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkGenerationLookupMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ServerChunkCacheMixin.class \
@@ -54,13 +57,16 @@ jobs:
             dev/ringworld/platform/forge1201/mixin/Forge1201LevelTicksMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ServerLevelMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ServerGamePacketListenerMixin.class \
-            dev/ringworld/platform/forge1201/mixin/Forge1201ProjectileUtilMixin.class; do
+            dev/ringworld/platform/forge1201/mixin/Forge1201ProjectileUtilMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ClientChunkStorageMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ClientPacketListenerMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ClientConnectionMixin.class; do
             if ! unzip -Z1 "$jar" | grep -Fxq "$entry"; then
               echo "Missing required packaged entry: $entry"
               exit 1
             fi
           done
-          echo "Forge 1.20.1 distributable JAR contains loader metadata, dimension profiles, periodic worldgen/entity/tick mixins, refmap and runtime."
+          echo "Forge 1.20.1 JAR contains server topology plus client seam projection/chart classes."
 
       - name: Validate periodic chunk arithmetic for all project dimensions
         run: |
@@ -96,6 +102,29 @@ jobs:
           fi
           echo "Server smoke boot failed or timed out before readiness (status=$status)."
           [[ -f "$LOG" ]] && tail -n 300 "$LOG"
+          exit 1
+
+      - name: Smoke boot Forge client mixins
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xvfb-run >/dev/null || { echo 'xvfb-run is required for the client smoke gate'; exit 1; }
+          rm -rf forge1201/run-client/logs forge1201/run-client/crash-reports
+          mkdir -p forge1201/run-client
+          set +e
+          timeout 90s xvfb-run -a ./gradlew :forge1201:runClient -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
+          status=$?
+          set -e
+          LOG=forge1201/run-client/logs/latest.log
+          if [[ "$status" -eq 124 ]] && [[ -f "$LOG" ]] \
+            && grep -q 'RingWorld Forge 1.20.1 bootstrap active' "$LOG" \
+            && grep -q 'MinecraftForge v47.4.10 Initialized' "$LOG" \
+            && ! grep -Eqi 'Mixin apply failed|MixinTransformerError|InvalidMixinException|InjectionError|Injection validation failed|ExceptionInInitializerError|This crash report has been saved|Caught exception from RingWorld' "$LOG"; then
+            echo 'Forge client stayed alive through bootstrap with the RingWorld client mixin set loaded.'
+            exit 0
+          fi
+          echo "Client smoke failed or exited before the observation window (status=$status)."
+          [[ -f "$LOG" ]] && tail -n 350 "$LOG"
           exit 1
 
       - name: Upload diagnostic jars
