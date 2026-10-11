@@ -2,6 +2,7 @@ package dev.ringworld.platform.forge1201;
 
 import dev.ringworld.RingWorldMod;
 import dev.ringworld.world.RingGeometry;
+import dev.ringworld.world.RingNavigationAccess;
 import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldSettings;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraftforge.event.TickEvent;
@@ -48,9 +50,9 @@ public final class Forge1201RingRuntime {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        // The current packet carries the persisted Overworld layout identity.
-        // Nether/End use fixed project profiles and will be added to the later
-        // dimension-aware client rendering packet without changing server gameplay.
+        // The packet carries the persisted Overworld identity plus the fixed
+        // Nether and End profiles, so client presentation can select the right
+        // geometry immediately after a dimension change.
         ServerLevel overworld = player.getServer().getLevel(Level.OVERWORLD);
         if (overworld != null) {
             Forge1201RingNetwork.sendSettings(player, RingWorldSettings.get(overworld));
@@ -85,6 +87,14 @@ public final class Forge1201RingRuntime {
         double targetX = geometry.wrapX(sourceX);
         double shift = targetX - sourceX;
         entity.setPos(targetX, entity.getY(), entity.getZ());
+
+        // Active AI paths live in the same transient coordinate chart as the
+        // mob. Fold their nodes and stuck-detection caches by exactly the same
+        // circumference shift or a mob crossing X=0/C immediately believes its
+        // target jumped tens of thousands of blocks away.
+        if (entity instanceof Mob mob && mob.getNavigation() instanceof RingNavigationAccess navigation) {
+            navigation.ringworld$foldPath((int)Math.rint(shift));
+        }
         return shift;
     }
 
