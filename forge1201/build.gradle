@@ -1,14 +1,17 @@
 buildscript {
     repositories {
         maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
         mavenCentral()
     }
     dependencies {
         classpath 'net.minecraftforge.gradle:ForgeGradle:6.0.36'
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
     }
 }
 
 apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.spongepowered.mixin'
 apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
 
@@ -30,6 +33,7 @@ minecraft {
         configureEach {
             workingDirectory project.file('run')
             property 'forge.logging.console.level', 'info'
+            arg '-mixin.config=ringworld.mixins.json'
             mods {
                 ringworld {
                     source sourceSets.main
@@ -43,12 +47,19 @@ minecraft {
     }
 }
 
+mixin {
+    add sourceSets.main, 'ringworld.refmap.json'
+    config 'ringworld.mixins.json'
+}
+
 repositories {
     mavenCentral()
+    maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -88,7 +99,9 @@ jar {
                 'Specification-Version' : '1',
                 'Implementation-Title'  : project.name,
                 'Implementation-Version': archiveVersion,
-                'Implementation-Vendor' : mod_authors
+                'Implementation-Vendor' : mod_authors,
+                'MixinConfigs'          : 'ringworld.mixins.json'
         ])
     }
+    finalizedBy 'reobfJar'
 }
