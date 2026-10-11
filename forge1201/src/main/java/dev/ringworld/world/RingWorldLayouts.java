@@ -37,16 +37,43 @@ public final class RingWorldLayouts {
             return widthBlocks / 16;
         }
 
+        /**
+         * The accepted width is exactly 2,000 blocks = 125 chunks. Because 125 is odd,
+         * centering the block interval exactly on Z=0 would cut two edge chunks in half.
+         * We instead center the 125 complete chunk rows on chunk Z=0. The playable band
+         * is therefore -992..1007: still exactly 2,000 blocks, but generation and storage
+         * never need partial boundary chunks.
+         */
+        public int minChunkZ() {
+            return -(widthChunks() / 2);
+        }
+
+        public int maxChunkZ() {
+            return minChunkZ() + widthChunks() - 1;
+        }
+
         public int minWidthZ() {
-            return -widthBlocks / 2;
+            return minChunkZ() * 16;
         }
 
         public int maxWidthZ() {
-            return minWidthZ() + widthBlocks - 1;
+            return (maxChunkZ() + 1) * 16 - 1;
+        }
+
+        public boolean isInsideWidth(double z) {
+            return z >= minWidthZ() && z <= maxWidthZ() + 1.0;
+        }
+
+        public boolean isExteriorChunkZ(int chunkZ) {
+            return chunkZ < minChunkZ() || chunkZ > maxChunkZ();
         }
 
         public int wrapBlockX(int x) {
             return Math.floorMod(x, circumferenceBlocks);
+        }
+
+        public int wrapChunkX(int chunkX) {
+            return Math.floorMod(chunkX, circumferenceChunks());
         }
 
         public double wrapX(double x) {
