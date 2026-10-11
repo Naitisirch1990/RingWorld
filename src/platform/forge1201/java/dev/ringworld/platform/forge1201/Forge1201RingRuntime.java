@@ -3,7 +3,9 @@ package dev.ringworld.platform.forge1201;
 import dev.ringworld.RingWorldMod;
 import dev.ringworld.world.RingGeometry;
 import dev.ringworld.world.RingWorldSettings;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -65,11 +67,21 @@ public final class Forge1201RingRuntime {
         if (!(event.level instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
 
         RingGeometry geometry = geometryFor(level);
+        // Moving entities changes the backing lookup; collect first so the
+        // fastutil iterator is never used while that lookup is mutated.
+        List<Entity> toWrap = new ArrayList<>();
         for (Entity entity : level.getAllEntities()) {
-            if (entity == null) continue;
+            if (entity != null && !entity.isRemoved()
+                    && geometry.needsCanonicalWrap(entity.getX())) {
+                toWrap.add(entity);
+            }
+        }
+        for (Entity entity : toWrap) {
+            if (entity.isRemoved() || entity.level() != level) continue;
             double sourceX = entity.getX();
-            if (!geometry.needsCanonicalWrap(sourceX)) continue;
-            entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
+            if (geometry.needsCanonicalWrap(sourceX)) {
+                entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
+            }
         }
     }
 
