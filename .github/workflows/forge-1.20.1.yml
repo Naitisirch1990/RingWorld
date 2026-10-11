@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compile:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,5 +27,13 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Compile Forge 1.20.1 target with Java 17 toolchain
-        run: ./gradlew :forge1201:compileJava -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
+      - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
+        run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
+
+      - name: Upload diagnostic jars
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ringworld-forge-1.20.1-diagnostic
+          path: forge1201/build/libs/*.jar
+          if-no-files-found: error
