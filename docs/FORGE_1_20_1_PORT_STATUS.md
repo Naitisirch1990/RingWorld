@@ -13,3 +13,7 @@ The first GitHub Actions compile attempt failed during Gradle dependency verific
 - Add server/client integration tests for continuous X wrapping, multiplayer, Nether and End, and boundary containment.
 - Add the requested 61,440-by-2,000 / 30,720-by-2,000 / 61,440-by-2,000 layouts and terrain/structures only after the core is stable.
 - Validate a built JAR in a clean Forge 1.20.1 client and dedicated server before declaring readiness.
+
+## Geometry constraint discovered
+
+The existing RingGeometry requires widthBlocks to be divisible by 16, whereas the requested width is exactly 2,000 blocks. This must be addressed deliberately (including partial edge chunks) before shipping. The requested circumferences 61,440 and 30,720 are divisible by 16.
