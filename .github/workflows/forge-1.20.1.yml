@@ -30,13 +30,19 @@ jobs:
       - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
         run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
 
+      - name: Set up runtime JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Smoke boot dedicated Forge server
         shell: bash
         run: |
           mkdir -p forge1201/run-server
           printf 'eula=true\n' > forge1201/run-server/eula.txt
           set +e
-          timeout 100s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
+          timeout 180s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
           status=$?
           set -e
           LOG=forge1201/run-server/logs/latest.log
