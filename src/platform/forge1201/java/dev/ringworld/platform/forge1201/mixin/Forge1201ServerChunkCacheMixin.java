@@ -2,7 +2,10 @@ package dev.ringworld.platform.forge1201.mixin;
 
 import dev.ringworld.platform.forge1201.Forge1201RingRuntime;
 import dev.ringworld.world.RingChunkCoordinates;
+import dev.ringworld.world.RingChunkLevelContext;
 import dev.ringworld.world.RingGeometry;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -11,11 +14,11 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
  * Folds world-facing server chunk requests onto the finite canonical chunk
- * plane. Generation's internal dependency graph deliberately remains vanilla
- * until the full periodic holder/dependency bridge is ported as one unit.
+ * plane and scopes distance propagation to the same periodic graph.
  */
 @Mixin(ServerChunkCache.class)
 abstract class Forge1201ServerChunkCacheMixin {
@@ -92,6 +95,23 @@ abstract class Forge1201ServerChunkCacheMixin {
             at = @At("HEAD"), argsOnly = true)
     private ChunkPos ringworld1201$canonicalForcedChunk(ChunkPos pos) {
         return ringworld1201$canonicalChunkPos(pos);
+    }
+
+    /**
+     * ChunkTracker reads this thread-local geometry while DistanceManager walks
+     * neighbour edges. ChunkMap and WorldGenRegion are bridged in companion
+     * mixins so holder lookup and generation use the same canonical topology.
+     */
+    @Redirect(
+            method = "runDistanceManagerUpdates",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/server/level/DistanceManager;runAllUpdates(Lnet/minecraft/server/level/ChunkMap;)Z"))
+    private boolean ringworld1201$runPeriodicDistanceUpdates(
+            DistanceManager manager, ChunkMap chunkMap) {
+        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        return geometry == null
+                ? manager.runAllUpdates(chunkMap)
+                : RingChunkLevelContext.run(geometry, () -> manager.runAllUpdates(chunkMap));
     }
 
     private int ringworld1201$canonicalChunkX(int chunkX) {
