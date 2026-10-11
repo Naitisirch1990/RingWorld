@@ -1,5 +1,7 @@
 package dev.ringworld.mixin;
 
+import dev.ringworld.world.RingNoiseRouter;
+import dev.ringworld.world.RingNoiseSamplingContext;
 import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldGeneratorAccess;
 import dev.ringworld.world.RingWorldLayouts;
@@ -9,22 +11,28 @@ import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.Aquifer;
 import net.minecraft.world.level.levelgen.Blender;
+import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.NoiseChunk;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.RandomState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * First Minecraft-ABI hook of the 1.20.1 backport. Besides owning the saved
- * ring policy, it keeps vanilla noise/surface/carver generation out of chunk
- * rows beyond the finite Z band. Guard rows remain empty for the later barrier
- * pass instead of becoming ordinary terrain outside the ring.
+ * Minecraft 1.20.1 noise-generator bridge for the custom ring policy.
+ * Exterior chunk rows are kept empty, while interior NoiseChunk construction
+ * receives a ring-wrapped density router so X=0 and X=circumference sample one
+ * continuous annular noise domain rather than two unrelated flat-world edges.
  */
 @Mixin(NoiseBasedChunkGenerator.class)
 public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGeneratorAccess {
@@ -65,6 +73,28 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
         if (ringworld$isExterior(chunk)) {
             cir.setReturnValue(CompletableFuture.completedFuture(chunk));
         }
+    }
+
+    @Redirect(
+            method = "createNoiseChunk",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/levelgen/NoiseChunk;forChunk(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/levelgen/DensityFunctions$BeardifierOrMarker;Lnet/minecraft/world/level/levelgen/NoiseGeneratorSettings;Lnet/minecraft/world/level/levelgen/Aquifer$FluidPicker;Lnet/minecraft/world/level/levelgen/blending/Blender;)Lnet/minecraft/world/level/levelgen/NoiseChunk;"))
+    private NoiseChunk ringworld$createPeriodicNoiseChunk(
+            ChunkAccess chunk,
+            RandomState randomState,
+            DensityFunctions.BeardifierOrMarker beardifier,
+            NoiseGeneratorSettings settings,
+            Aquifer.FluidPicker fluidPicker,
+            Blender blender) {
+        if (ringworld$layout == null) {
+            return NoiseChunk.forChunk(chunk, randomState, beardifier, settings, fluidPicker, blender);
+        }
+        NoiseRouter periodicRouter = RingNoiseRouter.wrap(
+                randomState.router(), ringworld$layout, ringworld$terrainNoiseMapping);
+        return RingNoiseSamplingContext.withRouter(periodicRouter,
+                () -> NoiseChunk.forChunk(
+                        chunk, randomState, beardifier, settings, fluidPicker, blender));
     }
 
     @Inject(method = "buildSurface", at = @At("HEAD"), cancellable = true)
