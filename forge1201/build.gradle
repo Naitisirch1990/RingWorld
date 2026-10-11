@@ -27,19 +27,24 @@ java {
     withSourcesJar()
 }
 
-// Stage 1 of the backport deliberately compiles the authoritative/common
-// implementation before the 1.21.1 client renderer is adapted. Keeping client
-// sources out of this gate makes server topology/API failures visible instead
-// of burying them under renderer-only mapping errors.
+// Backport bootstrap gate. First prove the loader-neutral geometry/config/world
+// model under 1.20.1, then reintroduce server runtime, networking and mixins in
+// reviewed groups. These exclusions are temporary and MUST be removed before a
+// distributable build is considered complete.
 sourceSets.main.java.setSrcDirs([
         rootProject.file('src/main/java'),
         rootProject.file('src/platform/forge1201/java')
 ])
+sourceSets.main.java.exclude('dev/ringworld/mixin/**')
+sourceSets.main.java.exclude('dev/ringworld/net/**')
+sourceSets.main.java.exclude('dev/ringworld/server/**')
+
 sourceSets.main.resources.setSrcDirs([
         rootProject.file('src/main/resources'),
         rootProject.file('src/platform/forge1201/resources')
 ])
 sourceSets.main.resources.exclude('fabric.mod.json')
+sourceSets.main.resources.exclude('ringworld.mixins.json')
 sourceSets.main.resources.exclude('ringworld.client.mixins.json')
 
 minecraft {
@@ -80,7 +85,6 @@ dependencies {
 
 mixin {
     add sourceSets.main, 'ringworld.refmap.json'
-    config 'ringworld.mixins.json'
     config 'ringworld.forge.mixins.json'
 }
 
@@ -99,7 +103,7 @@ jar {
                 'Specification-Version' : '1',
                 'Implementation-Title'  : project.name,
                 'Implementation-Version': project.version,
-                'MixinConfigs'          : 'ringworld.mixins.json,ringworld.forge.mixins.json'
+                'MixinConfigs'          : 'ringworld.forge.mixins.json'
         ])
     }
     finalizedBy 'reobfJar'
