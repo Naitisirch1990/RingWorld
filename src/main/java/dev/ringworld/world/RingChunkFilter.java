@@ -61,7 +61,7 @@ public record RingChunkFilter(ChunkPos center, int logicalCenterX,
                                       Consumer<ChunkPos> newlyIncluded, Consumer<ChunkPos> justRemoved) {
         if (oldFilter.equals(newFilter)) return;
         if (oldFilter instanceof RingChunkFilter oldRing && newFilter instanceof RingChunkFilter newRing) {
-            if (requiresFullRekey(oldRing.center.x, newRing.center.x,
+            if (requiresFullRekey(oldRing.logicalCenterX, newRing.logicalCenterX,
                     oldRing.viewDistance, newRing.viewDistance,
                     oldRing.circumferenceChunks, newRing.circumferenceChunks,
                     oldRing.minChunkZ, oldRing.maxChunkZ,
@@ -90,9 +90,14 @@ public record RingChunkFilter(ChunkPos center, int logicalCenterX,
                                      int oldMinChunkZ, int oldMaxChunkZ,
                                      int newMinChunkZ, int newMaxChunkZ) {
         if (oldCircumference != newCircumference) return true;
+        if (oldCircumference <= 0) return true;
         if (oldMinChunkZ != newMinChunkZ || oldMaxChunkZ != newMaxChunkZ) return true;
-        int rawDistance = Math.abs(newCenterX - oldCenterX);
-        int periodicDistance = Math.min(rawDistance, oldCircumference - rawDistance);
+
+        // Use long arithmetic because presentation charts may accumulate many
+        // laps before the server folds them back to the canonical plane.
+        long rawDelta = (long)newCenterX - oldCenterX;
+        int wrappedDelta = Math.floorMod(rawDelta, oldCircumference);
+        int periodicDistance = Math.min(wrappedDelta, oldCircumference - wrappedDelta);
         int overlapDiameter = Math.max(oldViewDistance, newViewDistance) * 2 + 2;
         return periodicDistance > overlapDiameter;
     }
