@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "ringworld.refmap.json",
   "mixins": [
+    "ChunkGeneratorMixin",
     "NoiseBasedChunkGeneratorMixin"
   ],
   "client": [],
