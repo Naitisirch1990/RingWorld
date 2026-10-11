@@ -9,12 +9,10 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
 import net.minecraft.world.level.storage.LevelResource;
@@ -22,7 +20,7 @@ import net.minecraft.world.level.storage.LevelResource;
 /** Immutable ring dimensions stored alongside a world once it is created. */
 public final class RingWorldSettings extends SavedData {
     public static final ResourceLocation STORAGE_ID =
-            ResourceLocation.fromNamespaceAndPath(RingWorldMod.MOD_ID, "settings");
+            new ResourceLocation(RingWorldMod.MOD_ID, "settings");
     private static final String STORAGE_KEY = STORAGE_ID.getNamespace() + "/" + STORAGE_ID.getPath();
     public static final String LEGACY_STORAGE_KEY = RingWorldMod.MOD_ID + "_settings";
     public static final int FORMAT_VERSION = 3;
@@ -47,8 +45,6 @@ public final class RingWorldSettings extends SavedData {
                     .forGetter(RingWorldSettings::terrainNoiseMapping),
             Codec.INT.fieldOf("format").forGetter(RingWorldSettings::formatVersion)
     ).apply(instance, RingWorldSettings::new));
-    private static final SavedData.Factory<RingWorldSettings> FACTORY = new SavedData.Factory<>(
-            RingWorldSettings::new, RingWorldSettings::load, DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
 
     private final int widthBlocks;
     private final int circumferenceBlocks;
@@ -106,13 +102,15 @@ public final class RingWorldSettings extends SavedData {
         this.formatVersion = formatVersion;
     }
 
-    private static RingWorldSettings load(CompoundTag tag, HolderLookup.Provider registries) {
+    /** 1.20.1 SavedData loader (registry-aware SavedData factories arrived later). */
+    private static RingWorldSettings load(CompoundTag tag) {
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElseThrow(
                 () -> new IllegalStateException("Could not decode saved RingWorld settings"));
     }
 
+    /** 1.20.1 SavedData serializer. */
     @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+    public CompoundTag save(CompoundTag tag) {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()
                 .filter(CompoundTag.class::isInstance)
                 .map(CompoundTag.class::cast)
@@ -123,7 +121,7 @@ public final class RingWorldSettings extends SavedData {
         migrateLegacySettings(world);
         ensureStorageDirectory(world);
         DimensionDataStorage manager = world.getDataStorage();
-        RingWorldSettings saved = manager.get(FACTORY, STORAGE_KEY);
+        RingWorldSettings saved = manager.get(RingWorldSettings::load, STORAGE_KEY);
         if (saved != null) {
             if (saved.formatVersion() == FORMAT_VERSION) return saved;
             RingWorldSettings upgraded = upgradeToCurrentFormat(saved);
