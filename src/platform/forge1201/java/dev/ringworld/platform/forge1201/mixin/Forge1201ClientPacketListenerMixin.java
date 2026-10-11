@@ -4,6 +4,7 @@ import dev.ringworld.platform.forge1201.Forge1201ClientRingState;
 import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
 import dev.ringworld.world.RingGeometry;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import net.minecraft.client.Minecraft;
@@ -15,16 +16,19 @@ import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockEventPacket;
 import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundChunksBiomesPacket;
 import net.minecraft.network.protocol.game.ClientboundForgetLevelChunkPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
 import net.minecraft.network.protocol.game.ClientboundLightUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveVehiclePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSectionBlocksUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundSetChunkCacheCenterPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
@@ -43,7 +47,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class Forge1201ClientPacketListenerMixin {
     /** Never carry RingWorld settings into a later unrelated multiplayer session. */
     @Inject(method = "handleLogin", at = @At("HEAD"))
-    private void ringworld1201$clearPreviousSession(CallbackInfo ci) {
+    private void ringworld1201$clearPreviousSession(ClientboundLoginPacket packet, CallbackInfo ci) {
         Forge1201ClientRingState.clear();
     }
 
@@ -61,6 +65,20 @@ abstract class Forge1201ClientPacketListenerMixin {
                     target = "Lnet/minecraft/network/protocol/game/ClientboundLightUpdatePacket;getX()I"))
     private int ringworld1201$mapLightUpdateX(ClientboundLightUpdatePacket packet) {
         return Forge1201ClientTopology.mapChunkX(packet.getX());
+    }
+
+    /** Biome refresh packets carry their own ChunkPos list and need the same chart projection. */
+    @ModifyVariable(method = "handleChunksBiomes", at = @At("HEAD"), argsOnly = true)
+    private ClientboundChunksBiomesPacket ringworld1201$mapChunkBiomeData(
+            ClientboundChunksBiomesPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread() || Forge1201ClientTopology.activeGeometry() == null) return packet;
+        List<ClientboundChunksBiomesPacket.ChunkBiomeData> mapped = packet.chunkBiomeData().stream()
+                .map(data -> new ClientboundChunksBiomesPacket.ChunkBiomeData(
+                        new ChunkPos(Forge1201ClientTopology.mapChunkX(data.pos().x), data.pos().z),
+                        data.buffer()))
+                .toList();
+        return new ClientboundChunksBiomesPacket(mapped);
     }
 
     @Redirect(
