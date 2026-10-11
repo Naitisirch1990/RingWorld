@@ -3,12 +3,10 @@ package dev.ringworld.world;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import dev.ringworld.RingWorldMod;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
 
@@ -18,7 +16,7 @@ public final class RingStructurePolicy extends SavedData {
     public static final int GUARANTEE_STRONGHOLD = 1;
     public static final int REQUEST_OCEAN_MONUMENT = 1 << 1;
     public static final ResourceLocation STORAGE_ID =
-            ResourceLocation.fromNamespaceAndPath(RingWorldMod.MOD_ID, "structure_policy");
+            new ResourceLocation(RingWorldMod.MOD_ID, "structure_policy");
     private static final String STORAGE_KEY = STORAGE_ID.getNamespace() + "/" + STORAGE_ID.getPath();
 
     private static final Codec<RingStructurePolicy> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -27,9 +25,6 @@ public final class RingStructurePolicy extends SavedData {
             RingMonumentResolution.CODEC.optionalFieldOf("ocean_monument", RingMonumentResolution.disabled())
                     .forGetter(RingStructurePolicy::oceanMonument)
     ).apply(instance, RingStructurePolicy::new));
-    private static final SavedData.Factory<RingStructurePolicy> FACTORY = new SavedData.Factory<>(
-            () -> new RingStructurePolicy(0, FORMAT_VERSION), RingStructurePolicy::load,
-            DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
 
     private final int guarantees;
     private final int formatVersion;
@@ -59,13 +54,15 @@ public final class RingStructurePolicy extends SavedData {
         this.oceanMonument = formatVersion == 1 ? RingMonumentResolution.disabled() : oceanMonument;
     }
 
-    private static RingStructurePolicy load(CompoundTag tag, HolderLookup.Provider registries) {
+    /** Minecraft 1.20.1 SavedData loader. */
+    private static RingStructurePolicy load(CompoundTag tag) {
         return CODEC.parse(NbtOps.INSTANCE, tag).result().orElseThrow(
                 () -> new IllegalStateException("Could not decode saved RingWorld structure policy"));
     }
 
+    /** Minecraft 1.20.1 SavedData serializer. */
     @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+    public CompoundTag save(CompoundTag tag) {
         return CODEC.encodeStart(NbtOps.INSTANCE, this).result()
                 .filter(CompoundTag.class::isInstance)
                 .map(CompoundTag.class::cast)
@@ -75,7 +72,7 @@ public final class RingStructurePolicy extends SavedData {
     /** Called only in the same ownership path that creates first-world settings. */
     static RingStructurePolicy createForNewWorld(
             DimensionDataStorage storage, boolean requestOceanMonument) {
-        RingStructurePolicy existing = storage.get(FACTORY, STORAGE_KEY);
+        RingStructurePolicy existing = storage.get(RingStructurePolicy::load, STORAGE_KEY);
         if (existing != null) return existing;
         int guarantees = GUARANTEE_STRONGHOLD | (requestOceanMonument ? REQUEST_OCEAN_MONUMENT : 0);
         RingStructurePolicy created = new RingStructurePolicy(guarantees, FORMAT_VERSION,
@@ -87,7 +84,7 @@ public final class RingStructurePolicy extends SavedData {
 
     /** Missing policy means a pre-feature world whose structure layout must remain unchanged. */
     public static RingStructurePolicy get(ServerLevel world) {
-        RingStructurePolicy saved = world.getDataStorage().get(FACTORY, STORAGE_KEY);
+        RingStructurePolicy saved = world.getDataStorage().get(RingStructurePolicy::load, STORAGE_KEY);
         return saved != null ? saved : new RingStructurePolicy(0, FORMAT_VERSION);
     }
 
