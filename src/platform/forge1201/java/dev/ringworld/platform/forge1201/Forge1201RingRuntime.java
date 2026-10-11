@@ -98,10 +98,23 @@ public final class Forge1201RingRuntime {
         return shift;
     }
 
+    /** Full runtime geometry; attaches saved settings and generator state lazily if necessary. */
     public static RingGeometry geometryFor(ServerLevel level) {
         if (!Forge1201DimensionProfiles.isRingDimension(level)) return null;
         RingGeometry geometry = GEOMETRY.get(level);
         return geometry != null ? geometry : attach(level);
+    }
+
+    /**
+     * Geometry safe to use from ChunkMap/DistanceManager while ServerLevel is
+     * still under construction. It must not touch getChunkSource(), saved data,
+     * or fire runtime attachment as those facilities can be incomplete at that
+     * point. Once attached, the persisted geometry is returned instead.
+     */
+    public static RingGeometry geometryForStorage(ServerLevel level) {
+        if (!Forge1201DimensionProfiles.isRingDimension(level)) return null;
+        RingGeometry geometry = GEOMETRY.get(level);
+        return geometry != null ? geometry : Forge1201DimensionProfiles.bootstrapGeometry(level);
     }
 
     private static RingGeometry attach(ServerLevel level) {
