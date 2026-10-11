@@ -2,6 +2,8 @@ package dev.ringworld.platform.forge1201.mixin;
 
 import dev.ringworld.platform.forge1201.Forge1201ClientRingState;
 import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
+import dev.ringworld.platform.forge1201.client.Forge1201ClientChunkMapAccess;
+import dev.ringworld.platform.forge1201.client.Forge1201ClientChunkMaps;
 import dev.ringworld.world.RingGeometry;
 import java.util.EnumSet;
 import java.util.List;
@@ -69,6 +71,21 @@ abstract class Forge1201ClientPacketListenerMixin {
                         new ChunkPos(Forge1201ClientTopology.mapChunkX(data.pos().x), data.pos().z), data.buffer()))
                 .toList();
         return new ClientboundChunksBiomesPacket(mapped);
+    }
+
+    /**
+     * A command-scale teleport, respawn or portal can move the presentation
+     * chart farther than the old client cache overlaps. Drop only that stale
+     * cache; natural seam walking remains a small neighbouring move and never
+     * takes this path.
+     */
+    @Inject(method = "handleSetChunkCacheCenter", at = @At("HEAD"))
+    private void ringworld1201$rekeyChunkCenter(ClientboundSetChunkCacheCenterPacket packet,
+                                                CallbackInfo ci) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread() || minecraft.level == null || minecraft.player == null) return;
+        if (Forge1201ClientTopology.activeGeometry() == null) return;
+        rekeyClientChart(minecraft, Forge1201ClientTopology.mapChunkX(packet.getX()), packet.getZ());
     }
 
     @Redirect(method = "handleSetChunkCacheCenter", at = @At(value = "INVOKE",
@@ -176,14 +193,39 @@ abstract class Forge1201ClientPacketListenerMixin {
         LocalPlayer player = minecraft.player;
         RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
         if (geometry == null || player == null) return packet;
+
         Set<RelativeMovement> relative = packet.getRelativeArguments();
         double targetX = relative.contains(RelativeMovement.X) ? player.getX() + packet.getX() : packet.getX();
+        double targetZ = relative.contains(RelativeMovement.Z) ? player.getZ() + packet.getZ() : packet.getZ();
         double presentationX = geometry.nearestImageX(targetX, player.getX());
+
+        rekeyClientChart(minecraft,
+                Math.floorDiv((int)Math.floor(presentationX), 16),
+                Math.floorDiv((int)Math.floor(targetZ), 16));
+
         if (presentationX == targetX) return packet;
         EnumSet<RelativeMovement> projected = relative.isEmpty()
                 ? EnumSet.noneOf(RelativeMovement.class) : EnumSet.copyOf(relative);
         projected.remove(RelativeMovement.X);
         return new ClientboundPlayerPositionPacket(presentationX, packet.getY(), packet.getZ(),
                 packet.getYRot(), packet.getXRot(), Set.copyOf(projected), packet.getId());
+    }
+
+    private static void rekeyClientChart(Minecraft minecraft, int nextChunkX, int nextChunkZ) {
+        if (minecraft.level == null) return;
+        Forge1201ClientChunkMapAccess access =
+                Forge1201ClientChunkMaps.get(minecraft.level.getChunkSource());
+        if (access == null) return;
+
+        int viewDistance = minecraft.options.renderDistance().get();
+        int overlapDiameter = viewDistance * 2 + 2;
+        if (Math.abs(nextChunkX - access.ringworld1201$centerChunkX()) <= overlapDiameter
+                && Math.abs(nextChunkZ - access.ringworld1201$centerChunkZ()) <= overlapDiameter) {
+            return;
+        }
+
+        access.ringworld1201$clearAllChunks();
+        minecraft.level.getChunkSource().updateViewCenter(nextChunkX, nextChunkZ);
+        minecraft.levelRenderer.needsUpdate();
     }
 }
