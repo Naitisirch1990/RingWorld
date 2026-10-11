@@ -5,7 +5,6 @@ import dev.ringworld.world.RingGeometry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -44,7 +43,7 @@ abstract class Forge1201EntityDistanceMixin {
     }
 
     private static RingGeometry ringworld1201$geometry(Entity entity) {
-        return entity.level() instanceof ServerLevel level && level.dimension() == Level.OVERWORLD
+        return entity.level() instanceof ServerLevel level
                 ? Forge1201RingRuntime.geometryFor(level) : null;
     }
 }
