@@ -9,16 +9,18 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 
 /** Boundary operations performed during chunk generation, never live ticks. */
 public final class RingGenerationBoundary {
+    /** Five visible bedrock blocks from the playable side toward each outer edge. */
     public static final int RIM_THICKNESS = 5;
+    /** Bedrock rises this many blocks above the local world-surface sample. */
+    public static final int WALL_CLEARANCE_ABOVE_TERRAIN = 10;
     /** Increment when rim placement/material semantics change. */
-    public static final int RIM_STYLE_VERSION = 1;
+    public static final int RIM_STYLE_VERSION = 2;
 
     private RingGenerationBoundary() { }
 
     /**
-     * Exclusive intrinsic Y immediately above the generated rim, clamped to
-     * the owning world's vertical extent. Terrain above this bound remains
-     * vanilla terrain; rim installation deliberately does not erase it.
+     * Legacy fixed-height helper retained for old saved metadata and reports.
+     * New project rims use local terrain height through {@link #localWallTopExclusive}.
      */
     public static int wallTopExclusive(int worldMinY, int worldHeight, int wallHeightBlocks) {
         if (worldHeight <= 0) throw new IllegalArgumentException("world height must be positive");
@@ -64,41 +66,98 @@ public final class RingGenerationBoundary {
         }
     }
 
-    /** Installs the finite, breakable rim after features have finished. */
-    public static void installRim(ChunkAccess chunk, RingGeometry geometry, int wallHeightBlocks) {
-        if (wallHeightBlocks <= 0 || !containsRim(chunk, geometry)) return;
+    /** Ensures the complete playable band has a continuous one-block bedrock floor. */
+    public static void installBedrockFloor(ChunkAccess chunk, RingGeometry geometry) {
+        if (isExterior(chunk, geometry)) return;
         ChunkPos pos = chunk.getPos();
-        int wallTopExclusive = wallTopExclusive(
-                chunk.getMinBuildHeight(), chunk.getHeight(), wallHeightBlocks);
+        int floorY = chunk.getMinBuildHeight();
+        int firstZ = Math.max(pos.getMinBlockZ(), geometry.minWidthZ());
+        int lastZ = Math.min(pos.getMaxBlockZ(), geometry.maxWidthZ());
+        if (firstZ > lastZ) return;
+
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        int[] rimZs = {geometry.minWidthZ(), geometry.maxWidthZ()};
-        for (int rimZ : rimZs) {
-            if (!containsZ(pos, rimZ)) continue;
-            int inwardDirection = rimZ == geometry.minWidthZ() ? 1 : -1;
-            for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
-                for (int y = chunk.getMinBuildHeight(); y < wallTopExclusive; y++) {
-                    for (int depth = 0; depth < RIM_THICKNESS; depth++) {
-                        int z = rimZ + inwardDirection * depth;
-                        mutable.set(x, y, z);
-                        chunk.removeBlockEntity(mutable);
-                        chunk.setBlockState(mutable, texturedRimBlock(x, y, z), false);
-                    }
-                }
+        for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
+            for (int z = firstZ; z <= lastZ; z++) {
+                mutable.set(x, floorY, z);
+                chunk.removeBlockEntity(mutable);
+                chunk.setBlockState(mutable, Blocks.BEDROCK.defaultBlockState(), false);
             }
         }
     }
 
     /**
-     * One-time, content-detected migration for already generated stone-brick
-     * rims. Once converted there are no legacy blocks above the new top, so a
-     * deliberately broken textured wall is not rebuilt on later chunk loads.
+     * Installs the project boundary after features have finished: five blocks
+     * of bedrock rising ten blocks above local terrain plus a hidden full-height
+     * barrier immediately outside the wall. For chunk-aligned legacy layouts,
+     * where the exterior barrier plane belongs to the next chunk, the barrier
+     * falls back to the outer bedrock face so escape is still impossible.
+     */
+    public static void installRim(ChunkAccess chunk, RingGeometry geometry, int ignoredLegacyWallHeightBlocks) {
+        if (!containsRim(chunk, geometry)) return;
+        ChunkPos pos = chunk.getPos();
+        int worldTopExclusive = chunk.getMinBuildHeight() + chunk.getHeight();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        int[] rimZs = {geometry.minWidthZ(), geometry.maxWidthZ()};
+
+        for (int rimZ : rimZs) {
+            if (!containsZ(pos, rimZ)) continue;
+            int inwardDirection = rimZ == geometry.minWidthZ() ? 1 : -1;
+            int probeZ = rimZ + inwardDirection * RIM_THICKNESS;
+            int requestedBarrierZ = rimZ - inwardDirection;
+            int barrierZ = containsZ(pos, requestedBarrierZ) ? requestedBarrierZ : rimZ;
+
+            for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
+                int wallTopExclusive = localWallTopExclusive(chunk, x, probeZ);
+                for (int depth = 0; depth < RIM_THICKNESS; depth++) {
+                    int z = rimZ + inwardDirection * depth;
+                    for (int y = chunk.getMinBuildHeight(); y < wallTopExclusive; y++) {
+                        mutable.set(x, y, z);
+                        chunk.removeBlockEntity(mutable);
+                        chunk.setBlockState(mutable, Blocks.BEDROCK.defaultBlockState(), false);
+                    }
+                }
+
+                // Place last so a fallback barrier on the outer wall face is not
+                // overwritten by the visible bedrock pass above.
+                for (int y = chunk.getMinBuildHeight(); y < worldTopExclusive; y++) {
+                    mutable.set(x, y, barrierZ);
+                    chunk.removeBlockEntity(mutable);
+                    chunk.setBlockState(mutable, Blocks.BARRIER.defaultBlockState(), false);
+                }
+            }
+        }
+    }
+
+    /** Returns the exclusive wall top for one X column, ten blocks above the local surface. */
+    static int localWallTopExclusive(ChunkAccess chunk, int x, int probeZ) {
+        int worldMinY = chunk.getMinBuildHeight();
+        int worldTopExclusive = worldMinY + chunk.getHeight();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        int surfaceY = Integer.MIN_VALUE;
+        if (probeZ >= chunk.getPos().getMinBlockZ() && probeZ <= chunk.getPos().getMaxBlockZ()) {
+            for (int y = worldTopExclusive - 1; y >= worldMinY; y--) {
+                if (!chunk.getBlockState(mutable.set(x, y, probeZ)).isAir()) {
+                    surfaceY = y;
+                    break;
+                }
+            }
+        }
+        if (surfaceY == Integer.MIN_VALUE) {
+            surfaceY = (int)Math.floor(RingGeometry.SURFACE_Y);
+        }
+        long desired = (long)surfaceY + 1L + WALL_CLEARANCE_ABOVE_TERRAIN;
+        return (int)Math.max(worldMinY, Math.min(desired, worldTopExclusive));
+    }
+
+    /**
+     * One-time conversion for legacy stone/cobble rims. Converted columns use
+     * the same bedrock-plus-barrier semantics as newly generated chunks.
      */
     public static boolean migrateLegacyRim(LevelChunk chunk, RingGeometry geometry,
-                                           int wallHeightBlocks) {
+                                           int ignoredLegacyWallHeightBlocks) {
         if (!containsRim(chunk, geometry)) return false;
         ChunkPos pos = chunk.getPos();
-        int wallTopExclusive = wallTopExclusive(
-                chunk.getMinBuildHeight(), chunk.getHeight(), wallHeightBlocks);
         int chunkTopExclusive = chunk.getMinBuildHeight() + chunk.getHeight();
         int[] rimZs = {geometry.minWidthZ(), geometry.maxWidthZ()};
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -107,8 +166,10 @@ public final class RingGenerationBoundary {
         for (int rimZ : rimZs) {
             if (!containsZ(pos, rimZ)) continue;
             for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX() && !legacy; x++) {
-                for (int y = wallTopExclusive; y < chunkTopExclusive; y++) {
-                    if (chunk.getBlockState(mutable.set(x, y, rimZ)).is(Blocks.STONE_BRICKS)) {
+                for (int y = chunk.getMinBuildHeight(); y < chunkTopExclusive; y++) {
+                    var state = chunk.getBlockState(mutable.set(x, y, rimZ));
+                    if (state.is(Blocks.STONE_BRICKS) || state.is(Blocks.COBBLESTONE)
+                            || state.is(Blocks.MOSSY_COBBLESTONE)) {
                         legacy = true;
                         break;
                     }
@@ -120,19 +181,33 @@ public final class RingGenerationBoundary {
         for (int rimZ : rimZs) {
             if (!containsZ(pos, rimZ)) continue;
             int inwardDirection = rimZ == geometry.minWidthZ() ? 1 : -1;
+            int probeZ = rimZ + inwardDirection * RIM_THICKNESS;
+            int requestedBarrierZ = rimZ - inwardDirection;
+            int barrierZ = containsZ(pos, requestedBarrierZ) ? requestedBarrierZ : rimZ;
+
             for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
+                int wallTopExclusive = localWallTopExclusive(chunk, x, probeZ);
                 for (int depth = 0; depth < RIM_THICKNESS; depth++) {
                     int z = rimZ + inwardDirection * depth;
                     for (int y = chunk.getMinBuildHeight(); y < chunkTopExclusive; y++) {
                         mutable.set(x, y, z);
                         if (y < wallTopExclusive) {
                             chunk.removeBlockEntity(mutable);
-                            chunk.setBlockState(mutable, texturedRimBlock(x, y, z), false);
-                        } else if (chunk.getBlockState(mutable).is(Blocks.STONE_BRICKS)) {
-                            chunk.removeBlockEntity(mutable);
-                            chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
+                            chunk.setBlockState(mutable, Blocks.BEDROCK.defaultBlockState(), false);
+                        } else {
+                            var state = chunk.getBlockState(mutable);
+                            if (state.is(Blocks.STONE_BRICKS) || state.is(Blocks.COBBLESTONE)
+                                    || state.is(Blocks.MOSSY_COBBLESTONE)) {
+                                chunk.removeBlockEntity(mutable);
+                                chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
+                            }
                         }
                     }
+                }
+                for (int y = chunk.getMinBuildHeight(); y < chunkTopExclusive; y++) {
+                    mutable.set(x, y, barrierZ);
+                    chunk.removeBlockEntity(mutable);
+                    chunk.setBlockState(mutable, Blocks.BARRIER.defaultBlockState(), false);
                 }
             }
         }
@@ -141,19 +216,8 @@ public final class RingGenerationBoundary {
     }
 
     public static boolean isRimMaterial(net.minecraft.world.level.block.state.BlockState state) {
-        return state.is(Blocks.COBBLESTONE) || state.is(Blocks.MOSSY_COBBLESTONE);
-    }
-
-    private static net.minecraft.world.level.block.state.BlockState texturedRimBlock(int x, int y, int z) {
-        long hash = (long)x * 0x9E3779B97F4A7C15L
-                ^ (long)y * 0xC2B2AE3D27D4EB4FL
-                ^ (long)z * 0x165667B19E3779F9L;
-        hash ^= hash >>> 30;
-        hash *= 0xBF58476D1CE4E5B9L;
-        hash ^= hash >>> 27;
-        // Roughly 30% mossy blocks, stable across reloads and generation order.
-        return Long.remainderUnsigned(hash, 10L) < 3L
-                ? Blocks.MOSSY_COBBLESTONE.defaultBlockState()
-                : Blocks.COBBLESTONE.defaultBlockState();
+        return state.is(Blocks.BEDROCK) || state.is(Blocks.BARRIER)
+                || state.is(Blocks.COBBLESTONE) || state.is(Blocks.MOSSY_COBBLESTONE)
+                || state.is(Blocks.STONE_BRICKS);
     }
 }
