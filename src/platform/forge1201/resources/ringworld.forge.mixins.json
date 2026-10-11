@@ -30,7 +30,8 @@
   "client": [
     "Forge1201ClientChunkStorageMixin",
     "Forge1201ClientPacketListenerMixin",
-    "Forge1201ClientConnectionMixin"
+    "Forge1201ClientConnectionMixin",
+    "Forge1201ShaderInstanceMixin"
   ],
   "injectors": {
     "defaultRequire": 1
