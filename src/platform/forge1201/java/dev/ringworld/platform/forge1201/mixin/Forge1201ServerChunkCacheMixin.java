@@ -63,9 +63,11 @@ abstract class Forge1201ServerChunkCacheMixin {
         return ringworld1201$canonicalChunkPos(pos);
     }
 
+    // Forge adds this force-ticks overload itself, so it has no Mojang/SRG
+    // obfuscation mapping. Keep the literal Forge runtime name/desriptor.
     @ModifyVariable(
             method = "addRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;Z)V",
-            at = @At("HEAD"), argsOnly = true)
+            at = @At("HEAD"), argsOnly = true, remap = false)
     private ChunkPos ringworld1201$canonicalForcedRegionTicket(ChunkPos pos) {
         return ringworld1201$canonicalChunkPos(pos);
     }
@@ -77,9 +79,10 @@ abstract class Forge1201ServerChunkCacheMixin {
         return ringworld1201$canonicalChunkPos(pos);
     }
 
+    // Same Forge-only overload as above: the name is intentionally not remapped.
     @ModifyVariable(
             method = "removeRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;Z)V",
-            at = @At("HEAD"), argsOnly = true)
+            at = @At("HEAD"), argsOnly = true, remap = false)
     private ChunkPos ringworld1201$canonicalForcedRegionTicketRemoval(ChunkPos pos) {
         return ringworld1201$canonicalChunkPos(pos);
     }
