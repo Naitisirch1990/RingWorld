@@ -3,7 +3,10 @@ package dev.ringworld.platform.forge1201.mixin;
 import dev.ringworld.platform.forge1201.Forge1201RingRuntime;
 import dev.ringworld.world.RingGeometry;
 import dev.ringworld.world.RingTopology;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -41,15 +44,25 @@ abstract class Forge1201ProjectileUtilMixin {
         double nearestDistance = Double.MAX_VALUE;
         Entity nearestEntity = null;
         Vec3 nearestHit = null;
-        for (Entity candidate : world.getEntities(source, query, predicate)) {
-            AABB hitbox = topology.projectBoxNear(candidate.getBoundingBox(), source.getX()).inflate(margin);
-            Optional<Vec3> hit = hitbox.clip(start, end);
-            if (hit.isEmpty()) continue;
-            double distance = start.distanceToSqr(hit.get());
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestEntity = candidate;
-                nearestHit = hit.get();
+
+        // A vanilla entity query only sees the canonical storage plane. When a
+        // projectile ray crosses X=0/C its chart-space query box can live partly
+        // in the neighbouring periodic image, so split that box into canonical
+        // windows before asking the level for candidates. Identity de-duplication
+        // prevents a very wide query from testing the same entity twice.
+        Set<Entity> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (RingTopology.QueryWindow window : topology.canonicalWindows(query)) {
+            for (Entity candidate : world.getEntities(source, window.canonicalBox(), predicate)) {
+                if (!visited.add(candidate)) continue;
+                AABB hitbox = topology.projectBoxNear(candidate.getBoundingBox(), source.getX()).inflate(margin);
+                Optional<Vec3> hit = hitbox.clip(start, end);
+                if (hit.isEmpty()) continue;
+                double distance = start.distanceToSqr(hit.get());
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestEntity = candidate;
+                    nearestHit = hit.get();
+                }
             }
         }
         cir.setReturnValue(nearestEntity == null ? null : new EntityHitResult(nearestEntity, nearestHit));
