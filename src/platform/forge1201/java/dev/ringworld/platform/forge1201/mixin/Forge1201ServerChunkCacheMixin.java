@@ -2,7 +2,10 @@ package dev.ringworld.platform.forge1201.mixin;
 
 import dev.ringworld.platform.forge1201.Forge1201RingRuntime;
 import dev.ringworld.world.RingChunkCoordinates;
+import dev.ringworld.world.RingChunkLevelContext;
 import dev.ringworld.world.RingGeometry;
+import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.DistanceManager;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -11,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
  * Folds world-facing server chunk requests onto the finite canonical chunk
@@ -64,7 +68,7 @@ abstract class Forge1201ServerChunkCacheMixin {
     }
 
     // Forge adds this force-ticks overload itself, so it has no Mojang/SRG
-    // obfuscation mapping. Keep the literal Forge runtime name/desriptor.
+    // obfuscation mapping. Keep the literal Forge runtime name/descriptor.
     @ModifyVariable(
             method = "addRegionTicket(Lnet/minecraft/server/level/TicketType;Lnet/minecraft/world/level/ChunkPos;ILjava/lang/Object;Z)V",
             at = @At("HEAD"), argsOnly = true, remap = false)
@@ -92,6 +96,23 @@ abstract class Forge1201ServerChunkCacheMixin {
             at = @At("HEAD"), argsOnly = true)
     private ChunkPos ringworld1201$canonicalForcedChunk(ChunkPos pos) {
         return ringworld1201$canonicalChunkPos(pos);
+    }
+
+    /**
+     * Scope vanilla's distance propagation to the active ring geometry. The
+     * ChunkTracker mixin uses this thread-local geometry to join X=0 and X=C-1
+     * while leaving unrelated dimensions/threads untouched.
+     */
+    @Redirect(
+            method = "runDistanceManagerUpdates",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/server/level/DistanceManager;runAllUpdates(Lnet/minecraft/server/level/ChunkMap;)Z"))
+    private boolean ringworld1201$runPeriodicDistanceUpdates(
+            DistanceManager manager, ChunkMap chunkMap) {
+        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        return geometry == null
+                ? manager.runAllUpdates(chunkMap)
+                : RingChunkLevelContext.run(geometry, () -> manager.runAllUpdates(chunkMap));
     }
 
     private int ringworld1201$canonicalChunkX(int chunkX) {
