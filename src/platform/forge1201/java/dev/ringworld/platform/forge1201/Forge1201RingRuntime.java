@@ -2,6 +2,7 @@ package dev.ringworld.platform.forge1201;
 
 import dev.ringworld.RingWorldMod;
 import dev.ringworld.world.RingGeometry;
+import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldSettings;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -27,10 +28,12 @@ public final class Forge1201RingRuntime {
 
     @SubscribeEvent
     public static void onLevelLoad(LevelEvent.Load event) {
-        if (!(event.getLevel() instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
+        if (!(event.getLevel() instanceof ServerLevel level)
+                || !Forge1201DimensionProfiles.isRingDimension(level)) return;
         RingGeometry geometry = attach(level);
         RingWorldMod.LOGGER.info(
-                "Forge 1.20.1 RingWorld runtime attached: circumference={} width={} chunks={}x{}",
+                "Forge 1.20.1 RingWorld runtime attached to {}: circumference={} width={} chunks={}x{}",
+                Forge1201DimensionProfiles.diagnosticName(level),
                 geometry.circumferenceBlocks(), geometry.widthBlocks(),
                 geometry.circumferenceChunks(), geometry.widthChunks());
     }
@@ -45,16 +48,23 @@ public final class Forge1201RingRuntime {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (!(player.level() instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
-        Forge1201RingNetwork.sendSettings(player, RingWorldSettings.get(level));
+        // The current packet carries the persisted Overworld layout identity.
+        // Nether/End use fixed project profiles and will be added to the later
+        // dimension-aware client rendering packet without changing server gameplay.
+        ServerLevel overworld = player.getServer().getLevel(Level.OVERWORLD);
+        if (overworld != null) {
+            Forge1201RingNetwork.sendSettings(player, RingWorldSettings.get(overworld));
+        }
     }
 
     @SubscribeEvent
     public static void onLevelTick(TickEvent.LevelTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        if (!(event.level instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
+        if (!(event.level instanceof ServerLevel level)
+                || !Forge1201DimensionProfiles.isRingDimension(level)) return;
 
         RingGeometry geometry = geometryFor(level);
+        if (geometry == null) return;
         List<Entity> toWrap = new ArrayList<>();
         for (Entity entity : level.getAllEntities()) {
             if (entity != null && !entity.isRemoved()
@@ -79,23 +89,37 @@ public final class Forge1201RingRuntime {
     }
 
     public static RingGeometry geometryFor(ServerLevel level) {
-        if (level.dimension() != Level.OVERWORLD) return null;
+        if (!Forge1201DimensionProfiles.isRingDimension(level)) return null;
         RingGeometry geometry = GEOMETRY.get(level);
         return geometry != null ? geometry : attach(level);
     }
 
     private static RingGeometry attach(ServerLevel level) {
-        RingWorldSettings settings = RingWorldSettings.get(level);
-        RingGeometry geometry = settings.geometry();
+        final RingGeometry geometry;
+        final int terrainNoiseMapping;
+        final int wallHeight;
+
+        if (level.dimension() == Level.OVERWORLD) {
+            RingWorldSettings settings = RingWorldSettings.get(level);
+            geometry = settings.geometry();
+            terrainNoiseMapping = settings.terrainNoiseMapping();
+            wallHeight = settings.wallHeightBlocks();
+        } else {
+            geometry = Forge1201DimensionProfiles.fixedGeometry(level);
+            if (geometry == null) return null;
+            terrainNoiseMapping = RingTerrainNoiseMapping.CURRENT;
+            wallHeight = Forge1201DimensionProfiles.LEGACY_WALL_HEIGHT_BLOCKS;
+        }
+
         ChunkGenerator generator = level.getChunkSource().getGenerator();
         if (generator instanceof Forge1201GeneratorAccess access) {
             access.ringworld1201$setGeometry(geometry);
-            access.ringworld1201$setTerrainNoiseMapping(settings.terrainNoiseMapping());
-            access.ringworld1201$setWallHeight(settings.wallHeightBlocks());
+            access.ringworld1201$setTerrainNoiseMapping(terrainNoiseMapping);
+            access.ringworld1201$setWallHeight(wallHeight);
         } else {
             RingWorldMod.LOGGER.warn(
-                    "Forge 1.20.1 Overworld generator does not expose RingWorld geometry yet: {}",
-                    generator.getClass().getName());
+                    "Forge 1.20.1 {} generator does not expose RingWorld geometry: {}",
+                    Forge1201DimensionProfiles.diagnosticName(level), generator.getClass().getName());
         }
         GEOMETRY.put(level, geometry);
         return geometry;
