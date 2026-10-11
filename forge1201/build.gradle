@@ -27,17 +27,20 @@ java {
     withSourcesJar()
 }
 
+// Stage 1 of the backport deliberately compiles the authoritative/common
+// implementation before the 1.21.1 client renderer is adapted. Keeping client
+// sources out of this gate makes server topology/API failures visible instead
+// of burying them under renderer-only mapping errors.
 sourceSets.main.java.setSrcDirs([
         rootProject.file('src/main/java'),
-        rootProject.file('src/client/java'),
         rootProject.file('src/platform/forge1201/java')
 ])
 sourceSets.main.resources.setSrcDirs([
         rootProject.file('src/main/resources'),
-        rootProject.file('src/client/resources'),
         rootProject.file('src/platform/forge1201/resources')
 ])
 sourceSets.main.resources.exclude('fabric.mod.json')
+sourceSets.main.resources.exclude('ringworld.client.mixins.json')
 
 minecraft {
     mappings channel: 'official', version: rootProject.forge_1201_minecraft_version
@@ -78,7 +81,6 @@ dependencies {
 mixin {
     add sourceSets.main, 'ringworld.refmap.json'
     config 'ringworld.mixins.json'
-    config 'ringworld.client.mixins.json'
     config 'ringworld.forge.mixins.json'
 }
 
@@ -97,7 +99,7 @@ jar {
                 'Specification-Version' : '1',
                 'Implementation-Title'  : project.name,
                 'Implementation-Version': project.version,
-                'MixinConfigs'          : 'ringworld.mixins.json,ringworld.client.mixins.json,ringworld.forge.mixins.json'
+                'MixinConfigs'          : 'ringworld.mixins.json,ringworld.forge.mixins.json'
         ])
     }
     finalizedBy 'reobfJar'
