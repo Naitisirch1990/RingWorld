@@ -30,17 +30,24 @@ jobs:
       - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
         run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
 
+      - name: Validate periodic chunk arithmetic for all project dimensions
+        run: |
+          mkdir -p "$RUNNER_TEMP/ringworld-core"
+          javac -d "$RUNNER_TEMP/ringworld-core" src/main/java/dev/ringworld/world/RingChunkTopology.java forge1201/smoke/RingCoreTopologySmoke.java
+          java -cp "$RUNNER_TEMP/ringworld-core" dev.ringworld.platform.forge1201.smoke.RingCoreTopologySmoke
+
       - name: Smoke boot dedicated Forge server
         shell: bash
         run: |
           mkdir -p forge1201/run-server
           printf 'eula=true\n' > forge1201/run-server/eula.txt
+          printf 'motd=RingWorld CI smoke\n' > forge1201/run-server/server.properties
           set +e
           timeout 180s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
           status=$?
           set -e
           LOG=forge1201/run-server/logs/latest.log
-          if [[ "$status" -eq 124 ]] && [[ -f "$LOG" ]] && grep -q 'Done (' "$LOG" && grep -q 'Forge 1.20.1 RingWorld runtime attached' "$LOG" && ! grep -Eq 'Encountered an unexpected exception|Exception caught during firing event|This crash report has been saved' "$LOG"; then
+          if [[ "$status" -eq 124 ]] && [[ -f "$LOG" ]] && grep -q 'Done (' "$LOG" && grep -q 'Forge 1.20.1 RingWorld runtime attached: circumference=61440 width=2000' "$LOG" && ! grep -Eq 'Encountered an unexpected exception|Exception caught during firing event|This crash report has been saved' "$LOG"; then
             echo 'Dedicated server reached a playable state and RingWorld geometry attached.'
             exit 0
           fi
