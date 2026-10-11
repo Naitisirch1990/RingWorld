@@ -19,9 +19,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Makes vanilla projectile/entity raycasts see the nearest periodic image of
- * seam-adjacent hitboxes on Forge 1.20.1. This is the generic foundation used
- * by arrows and by gun mods that ultimately delegate entity collision to
- * ProjectileUtil.
+ * seam-adjacent hitboxes on Forge 1.20.1 in every configured ring dimension.
+ * This is the generic foundation used by arrows and by gun mods that ultimately
+ * delegate entity collision to ProjectileUtil.
  */
 @Mixin(ProjectileUtil.class)
 abstract class Forge1201ProjectileUtilMixin {
@@ -32,8 +32,7 @@ abstract class Forge1201ProjectileUtilMixin {
             Level world, Entity source, Vec3 start, Vec3 end, AABB query,
             Predicate<Entity> predicate, float margin,
             CallbackInfoReturnable<EntityHitResult> cir) {
-        if (!(world instanceof ServerLevel serverLevel)
-                || serverLevel.dimension() != Level.OVERWORLD) return;
+        if (!(world instanceof ServerLevel serverLevel)) return;
 
         RingGeometry geometry = Forge1201RingRuntime.geometryFor(serverLevel);
         if (geometry == null) return;
