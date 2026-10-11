@@ -117,7 +117,7 @@ public final class RingWorldCreationUiModel {
 
         /** One concise warning suitable for the compact screen's final line. */
         public static String compactWarning(RingDimensionReport report) {
-            return report == null || report.warnings().isEmpty() ? "" : report.warnings().getFirst();
+            return report == null || report.warnings().isEmpty() ? "" : report.warnings().get(0);
         }
 
         /** User-facing report errors, retained alongside field parsing errors. */
