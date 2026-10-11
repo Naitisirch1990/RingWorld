@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -14,10 +15,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-/**
- * Converts client presentation coordinates back to the canonical server chart
- * for the two ordinary survival block-interaction packet families.
- */
+/** Converts client presentation coordinates back to the canonical server chart. */
 @Mixin(Connection.class)
 abstract class Forge1201ClientConnectionMixin {
     @ModifyVariable(
@@ -29,8 +27,7 @@ abstract class Forge1201ClientConnectionMixin {
 
         if (packet instanceof ServerboundPlayerActionPacket action) {
             BlockPos pos = action.getPos();
-            BlockPos canonical = new BlockPos(
-                    geometry.wrapBlockX(pos.getX()), pos.getY(), pos.getZ());
+            BlockPos canonical = canonical(pos, geometry);
             if (canonical.equals(pos)) return packet;
             return new ServerboundPlayerActionPacket(
                     action.getAction(), canonical, action.getDirection(), action.getSequence());
@@ -53,6 +50,19 @@ abstract class Forge1201ClientConnectionMixin {
                     interaction.getHand(), canonicalHit, interaction.getSequence());
         }
 
+        if (packet instanceof ServerboundSignUpdatePacket sign) {
+            BlockPos canonical = canonical(sign.getPos(), geometry);
+            if (canonical.equals(sign.getPos())) return packet;
+            String[] lines = sign.getLines();
+            return new ServerboundSignUpdatePacket(canonical, sign.isFrontText(),
+                    lines[0], lines[1], lines[2], lines[3]);
+        }
+
         return packet;
+    }
+
+    private static BlockPos canonical(BlockPos pos, RingGeometry geometry) {
+        int x = geometry.wrapBlockX(pos.getX());
+        return x == pos.getX() ? pos : new BlockPos(x, pos.getY(), pos.getZ());
     }
 }
