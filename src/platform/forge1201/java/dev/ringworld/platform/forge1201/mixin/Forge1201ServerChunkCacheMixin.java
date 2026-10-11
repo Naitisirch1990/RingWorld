@@ -99,8 +99,8 @@ abstract class Forge1201ServerChunkCacheMixin {
 
     /**
      * ChunkTracker reads this thread-local geometry while DistanceManager walks
-     * neighbour edges. ChunkMap and WorldGenRegion are bridged in companion
-     * mixins so holder lookup and generation use the same canonical topology.
+     * neighbour edges. The storage geometry is available before LevelEvent.Load,
+     * so initial spawn tickets cannot seed a second negative-X holder graph.
      */
     @Redirect(
             method = "runDistanceManagerUpdates",
@@ -108,19 +108,19 @@ abstract class Forge1201ServerChunkCacheMixin {
                     target = "Lnet/minecraft/server/level/DistanceManager;runAllUpdates(Lnet/minecraft/server/level/ChunkMap;)Z"))
     private boolean ringworld1201$runPeriodicDistanceUpdates(
             DistanceManager manager, ChunkMap chunkMap) {
-        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        RingGeometry geometry = Forge1201RingRuntime.geometryForStorage(level);
         return geometry == null
                 ? manager.runAllUpdates(chunkMap)
                 : RingChunkLevelContext.run(geometry, () -> manager.runAllUpdates(chunkMap));
     }
 
     private int ringworld1201$canonicalChunkX(int chunkX) {
-        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        RingGeometry geometry = Forge1201RingRuntime.geometryForStorage(level);
         return geometry == null ? chunkX : RingChunkCoordinates.wrapChunkX(chunkX, geometry);
     }
 
     private ChunkPos ringworld1201$canonicalChunkPos(ChunkPos pos) {
-        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        RingGeometry geometry = Forge1201RingRuntime.geometryForStorage(level);
         if (geometry == null) return pos;
         int canonicalX = RingChunkCoordinates.wrapChunkX(pos.x, geometry);
         return canonicalX == pos.x ? pos : new ChunkPos(canonicalX, pos.z);
