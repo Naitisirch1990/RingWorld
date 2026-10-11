@@ -41,7 +41,7 @@ final class RingLandmarkPlanTest {
             if (delta > circumference / 2) delta -= circumference;
             if (delta < -circumference / 2) delta += circumference;
             assertTrue(Math.abs(delta) <= jitter,
-                    () -> "slot " + i + " exceeds jitter radius: " + delta);
+                    "slot " + i + " exceeds jitter radius: " + delta);
         }
     }
 
