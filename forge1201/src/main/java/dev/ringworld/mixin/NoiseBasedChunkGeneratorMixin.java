@@ -2,17 +2,19 @@ package dev.ringworld.mixin;
 
 import dev.ringworld.world.RingNoiseRouter;
 import dev.ringworld.world.RingNoiseSamplingContext;
+import dev.ringworld.world.RingSurfaceSamplingContext;
 import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldGeneratorAccess;
 import dev.ringworld.world.RingWorldLayouts;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import net.minecraft.core.Registry;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.Aquifer;
-import net.minecraft.world.level.levelgen.Blender;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
@@ -21,7 +23,11 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.minecraft.world.level.levelgen.NoiseSettings;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.SurfaceRules;
+import net.minecraft.world.level.levelgen.SurfaceSystem;
+import net.minecraft.world.level.levelgen.WorldGenerationContext;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.levelgen.blending.Blender;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -130,6 +136,36 @@ public abstract class NoiseBasedChunkGeneratorMixin implements RingWorldGenerato
             ChunkAccess chunk,
             CallbackInfo ci) {
         if (ringworld$isExterior(chunk)) ci.cancel();
+    }
+
+    /** Surface-only noise and random coordinates must use the same annular chart. */
+    @Redirect(
+            method = "buildSurface(Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/WorldGenerationContext;Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/StructureManager;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/core/Registry;Lnet/minecraft/world/level/levelgen/blending/Blender;)V",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/levelgen/SurfaceSystem;buildSurface(Lnet/minecraft/world/level/levelgen/RandomState;Lnet/minecraft/world/level/biome/BiomeManager;Lnet/minecraft/core/Registry;ZLnet/minecraft/world/level/levelgen/WorldGenerationContext;Lnet/minecraft/world/level/chunk/ChunkAccess;Lnet/minecraft/world/level/levelgen/NoiseChunk;Lnet/minecraft/world/level/levelgen/SurfaceRules$RuleSource;)V"))
+    private void ringworld$periodicSurfaceSystem(
+            SurfaceSystem surfaceSystem,
+            RandomState randomState,
+            BiomeManager biomeManager,
+            Registry<Biome> biomes,
+            boolean legacyRandom,
+            WorldGenerationContext context,
+            ChunkAccess chunk,
+            NoiseChunk noiseChunk,
+            SurfaceRules.RuleSource rules) {
+        if (ringworld$layout == null) {
+            surfaceSystem.buildSurface(
+                    randomState, biomeManager, biomes, legacyRandom,
+                    context, chunk, noiseChunk, rules);
+            return;
+        }
+        RingSurfaceSamplingContext.run(
+                ringworld$layout,
+                ringworld$terrainNoiseMapping,
+                () -> surfaceSystem.buildSurface(
+                        randomState, biomeManager, biomes, legacyRandom,
+                        context, chunk, noiseChunk, rules));
     }
 
     @Inject(method = "applyCarvers", at = @At("HEAD"), cancellable = true)
