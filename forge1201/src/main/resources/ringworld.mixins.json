@@ -6,7 +6,9 @@
   "refmap": "ringworld.refmap.json",
   "mixins": [
     "ChunkGeneratorMixin",
-    "NoiseBasedChunkGeneratorMixin"
+    "DensityCoordinateConsumerMixin",
+    "NoiseBasedChunkGeneratorMixin",
+    "NoiseChunkMixin"
   ],
   "client": [],
   "injectors": {
