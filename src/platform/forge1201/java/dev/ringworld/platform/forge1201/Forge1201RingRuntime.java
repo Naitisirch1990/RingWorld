@@ -6,10 +6,12 @@ import dev.ringworld.world.RingWorldSettings;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -19,7 +21,7 @@ import net.minecraftforge.fml.common.Mod;
  *
  * <p>This deliberately uses Forge lifecycle/tick events instead of the newer
  * 1.21 server hooks. It establishes saved geometry ownership and the canonical
- * X plane while the older chunk-tracking/network/rendering adapters are being
+ * X plane while the older chunk-tracking and rendering adapters are being
  * ported. Client presentation smoothing is added in a later backport stage.</p>
  */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -43,6 +45,18 @@ public final class Forge1201RingRuntime {
         if (event.getLevel() instanceof ServerLevel level) {
             GEOMETRY.remove(level);
         }
+    }
+
+    /**
+     * Baseline 1.20.1 settings synchronization. A later login-order mixin will
+     * move this packet ahead of initial chunk presentation, matching the
+     * original RingWorld ordering contract exactly.
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(player.level() instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
+        Forge1201RingNetwork.sendSettings(player, RingWorldSettings.get(level));
     }
 
     @SubscribeEvent
