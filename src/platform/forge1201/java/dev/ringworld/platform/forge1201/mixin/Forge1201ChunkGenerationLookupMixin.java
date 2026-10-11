@@ -31,7 +31,7 @@ abstract class Forge1201ChunkGenerationLookupMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/server/level/ChunkMap;getUpdatingChunkIfPresent(J)Lnet/minecraft/server/level/ChunkHolder;"))
     private ChunkHolder ringworld1201$periodicGenerationHolder(ChunkMap ignored, long packedPos) {
-        RingGeometry geometry = Forge1201RingRuntime.geometryFor(level);
+        RingGeometry geometry = Forge1201RingRuntime.geometryForStorage(level);
         if (geometry == null) return getUpdatingChunkIfPresent(packedPos);
         ChunkPos requested = new ChunkPos(packedPos);
         int canonicalX = RingChunkCoordinates.wrapChunkX(requested.x, geometry);
