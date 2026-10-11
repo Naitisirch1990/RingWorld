@@ -8,7 +8,9 @@
     "ChunkGeneratorMixin",
     "DensityCoordinateConsumerMixin",
     "NoiseBasedChunkGeneratorMixin",
-    "NoiseChunkMixin"
+    "NoiseChunkMixin",
+    "SurfaceNoiseThresholdMixin",
+    "SurfaceSystemMixin"
   ],
   "client": [],
   "injectors": {
