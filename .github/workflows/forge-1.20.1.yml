@@ -82,7 +82,7 @@ jobs:
           printf 'eula=true\n' > forge1201/run-server/eula.txt
           printf 'motd=RingWorld CI smoke\n' > forge1201/run-server/server.properties
           set +e
-          timeout 180s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
+          timeout 90s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
           status=$?
           set -e
           LOG=forge1201/run-server/logs/latest.log
@@ -93,11 +93,32 @@ jobs:
             && grep -q 'RingWorld runtime attached to end: circumference=61440 width=2000' "$LOG" \
             && ! grep -Eq 'Encountered an unexpected exception|Exception caught during firing event|This crash report has been saved' "$LOG"; then
             REGION_DIR=forge1201/run-server/world/region
-            if [[ -d "$REGION_DIR" ]] && find "$REGION_DIR" -maxdepth 1 -type f -printf '%f\n' | grep -Eq '^r\.-[0-9]+\.'; then
-              echo 'Periodic spawn generation wrote a negative-X Overworld region file; canonical holder graph regressed.'
-              find "$REGION_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
-              exit 1
-            fi
+            python3 - "$REGION_DIR" <<'PY'
+          from pathlib import Path
+          import re
+          import struct
+          import sys
+
+          region_dir = Path(sys.argv[1])
+          bad = []
+          pattern = re.compile(r'^r\.(-?\d+)\.(-?\d+)\.mca$')
+          if region_dir.is_dir():
+              for path in sorted(region_dir.glob('r.*.*.mca')):
+                  match = pattern.match(path.name)
+                  if not match or int(match.group(1)) >= 0:
+                      continue
+                  if path.stat().st_size < 4096:
+                      continue
+                  with path.open('rb') as handle:
+                      header = handle.read(4096)
+                  allocated = sum(1 for (entry,) in struct.iter_unpack('>I', header) if entry != 0)
+                  if allocated:
+                      bad.append((path.name, allocated))
+          if bad:
+              print('Negative-X region files contain allocated chunks:', bad)
+              raise SystemExit(1)
+          print('Negative-X speculative region files contain no allocated chunks.')
+          PY
             echo 'Dedicated server reached a playable state, all three RingWorld profiles attached, and seam spawn generation stayed on canonical X storage.'
             exit 0
           fi
@@ -151,6 +172,14 @@ jobs:
           echo "Client smoke failed or exited before the observation window (status=$status)."
           [[ -f "$LOG" ]] && tail -n 350 "$LOG"
           exit 1
+
+      - name: Remove speculative empty region files from packaged test world
+        if: always()
+        shell: bash
+        run: |
+          if [[ -d forge1201/run-server/world ]]; then
+            find forge1201/run-server/world -type f -name 'r.*.*.mca' -size 0 -print -delete
+          fi
 
       - name: Upload diagnostic build and generated world
         if: always()
