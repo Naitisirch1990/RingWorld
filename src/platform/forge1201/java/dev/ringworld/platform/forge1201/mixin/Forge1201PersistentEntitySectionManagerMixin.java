@@ -4,13 +4,10 @@ import dev.ringworld.platform.forge1201.Forge1201RingRuntime;
 import dev.ringworld.world.RingEntityManagerAccess;
 import dev.ringworld.world.RingGeometry;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.entity.EntityAccess;
 import net.minecraft.world.level.entity.PersistentEntitySectionManager;
-import net.minecraft.world.level.entity.Visibility;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -18,7 +15,6 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /** Stores entities and entity-file IO in the one canonical circumference plane. */
@@ -50,10 +46,14 @@ abstract class Forge1201PersistentEntitySectionManagerMixin<T extends EntityAcce
         }
     }
 
-    /** Forge moves the vanilla indexing body into addEntityWithoutEvent. */
+    /**
+     * Forge moves vanilla's actual indexing body into this helper. Canonicalize
+     * the entity first, so its ordinary SectionPos indexing is automatically
+     * canonical as well. The helper itself is Forge-added and is not remapped.
+     */
     @Inject(
             method = "addEntityWithoutEvent(Lnet/minecraft/world/level/entity/EntityAccess;Z)Z",
-            at = @At("HEAD"))
+            at = @At("HEAD"), remap = false)
     private void ringworld1201$canonicalEntityPosition(T entity, boolean existing,
                                                         CallbackInfoReturnable<Boolean> cir) {
         RingGeometry geometry = ringworld1201$geometry;
@@ -83,19 +83,6 @@ abstract class Forge1201PersistentEntitySectionManagerMixin<T extends EntityAcce
             at = @At("HEAD"), argsOnly = true)
     private ChunkPos ringworld1201$canonicalTickStatus(ChunkPos pos) {
         return ringworld1201$canonical(pos);
-    }
-
-    @Redirect(
-            method = "addEntityWithoutEvent(Lnet/minecraft/world/level/entity/EntityAccess;Z)Z",
-            at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/core/SectionPos;asLong(Lnet/minecraft/core/BlockPos;)J"))
-    private long ringworld1201$canonicalInitialSection(BlockPos pos) {
-        RingGeometry geometry = ringworld1201$geometry;
-        if (geometry == null) return SectionPos.asLong(pos);
-        return SectionPos.asLong(
-                Math.floorDiv(geometry.wrapBlockX(pos.getX()), 16),
-                SectionPos.blockToSectionCoord(pos.getY()),
-                SectionPos.blockToSectionCoord(pos.getZ()));
     }
 
     private ChunkPos ringworld1201$canonical(ChunkPos pos) {
