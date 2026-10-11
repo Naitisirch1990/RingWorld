@@ -46,6 +46,13 @@ jobs:
             dev/ringworld/platform/forge1201/Forge1201DimensionProfiles.class \
             dev/ringworld/platform/forge1201/Forge1201RingRuntime.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ChunkMapMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ChunkGenerationLookupMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ServerChunkCacheMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ChunkTrackerMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201WorldGenRegionMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201PersistentEntitySectionManagerMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201LevelTicksMixin.class \
+            dev/ringworld/platform/forge1201/mixin/Forge1201ServerLevelMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ServerGamePacketListenerMixin.class \
             dev/ringworld/platform/forge1201/mixin/Forge1201ProjectileUtilMixin.class; do
             if ! unzip -Z1 "$jar" | grep -Fxq "$entry"; then
@@ -53,7 +60,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Forge 1.20.1 distributable JAR contains loader metadata, dimension profiles, mixins, refmap and runtime."
+          echo "Forge 1.20.1 distributable JAR contains loader metadata, dimension profiles, periodic worldgen/entity/tick mixins, refmap and runtime."
 
       - name: Validate periodic chunk arithmetic for all project dimensions
         run: |
@@ -78,7 +85,13 @@ jobs:
             && grep -q 'RingWorld runtime attached to nether: circumference=30720 width=2000' "$LOG" \
             && grep -q 'RingWorld runtime attached to end: circumference=61440 width=2000' "$LOG" \
             && ! grep -Eq 'Encountered an unexpected exception|Exception caught during firing event|This crash report has been saved' "$LOG"; then
-            echo 'Dedicated server reached a playable state and all three RingWorld dimension profiles attached.'
+            REGION_DIR=forge1201/run-server/world/region
+            if [[ -d "$REGION_DIR" ]] && find "$REGION_DIR" -maxdepth 1 -type f -printf '%f\n' | grep -Eq '^r\.-[0-9]+\.'; then
+              echo 'Periodic spawn generation wrote a negative-X Overworld region file; canonical holder graph regressed.'
+              find "$REGION_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
+              exit 1
+            fi
+            echo 'Dedicated server reached a playable state, all three RingWorld profiles attached, and seam spawn generation stayed on canonical X storage.'
             exit 0
           fi
           echo "Server smoke boot failed or timed out before readiness (status=$status)."
