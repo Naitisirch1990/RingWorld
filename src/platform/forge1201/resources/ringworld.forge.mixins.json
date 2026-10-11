@@ -8,7 +8,8 @@
     "Forge1201NoiseGeneratorMixin",
     "Forge1201ChunkGeneratorMixin",
     "Forge1201ChunkMapMixin",
-    "Forge1201ServerGamePacketListenerMixin"
+    "Forge1201ServerGamePacketListenerMixin",
+    "Forge1201EntityDistanceMixin"
   ],
   "client": [],
   "injectors": {
