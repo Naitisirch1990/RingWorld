@@ -30,6 +30,24 @@ jobs:
       - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
         run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
 
+      - name: Smoke boot dedicated Forge server
+        shell: bash
+        run: |
+          mkdir -p forge1201/run-server
+          printf 'eula=true\n' > forge1201/run-server/eula.txt
+          set +e
+          timeout 100s ./gradlew :forge1201:runServer -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
+          status=$?
+          set -e
+          LOG=forge1201/run-server/logs/latest.log
+          if [[ -f "$LOG" ]] && grep -q 'Done (' "$LOG" && grep -q 'Forge 1.20.1 RingWorld runtime attached' "$LOG"; then
+            echo 'Dedicated server reached a playable state and RingWorld geometry attached.'
+            exit 0
+          fi
+          echo "Server smoke boot failed or timed out before readiness (status=$status)."
+          [[ -f "$LOG" ]] && tail -n 250 "$LOG"
+          exit 1
+
       - name: Upload diagnostic jars
         if: success()
         uses: actions/upload-artifact@v4
