@@ -18,14 +18,7 @@ import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * First Forge 1.20.1 server-runtime bridge.
- *
- * <p>This deliberately uses Forge lifecycle/tick events instead of the newer
- * 1.21 server hooks. It establishes saved geometry ownership and the canonical
- * X plane while the older chunk-tracking and rendering adapters are being
- * ported. Client presentation smoothing is added in a later backport stage.</p>
- */
+/** Forge 1.20.1 server-runtime bridge for the RingWorld backport. */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class Forge1201RingRuntime {
     private static final Map<ServerLevel, RingGeometry> GEOMETRY = new IdentityHashMap<>();
@@ -49,11 +42,6 @@ public final class Forge1201RingRuntime {
         }
     }
 
-    /**
-     * Baseline 1.20.1 settings synchronization. A later login-order mixin will
-     * move this packet ahead of initial chunk presentation, matching the
-     * original RingWorld ordering contract exactly.
-     */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
@@ -67,8 +55,6 @@ public final class Forge1201RingRuntime {
         if (!(event.level instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
 
         RingGeometry geometry = geometryFor(level);
-        // Moving entities changes the backing lookup; collect first so the
-        // fastutil iterator is never used while that lookup is mutated.
         List<Entity> toWrap = new ArrayList<>();
         for (Entity entity : level.getAllEntities()) {
             if (entity != null && !entity.isRemoved()
@@ -82,12 +68,6 @@ public final class Forge1201RingRuntime {
         }
     }
 
-    /**
-     * Folds one entity into canonical X storage and returns the exact X shift.
-     * Callers that keep anti-cheat or interpolation baselines can apply the
-     * same shift without turning a seam crossing into a circumference-sized
-     * movement on the following tick.
-     */
     public static double canonicalizeEntityPosition(Entity entity, RingGeometry geometry) {
         if (entity == null || geometry == null) return 0.0;
         double sourceX = entity.getX();
@@ -98,7 +78,6 @@ public final class Forge1201RingRuntime {
         return shift;
     }
 
-    /** Allocation-free geometry lookup for Forge 1.20.1 server hot paths. */
     public static RingGeometry geometryFor(ServerLevel level) {
         if (level.dimension() != Level.OVERWORLD) return null;
         RingGeometry geometry = GEOMETRY.get(level);
@@ -111,6 +90,7 @@ public final class Forge1201RingRuntime {
         ChunkGenerator generator = level.getChunkSource().getGenerator();
         if (generator instanceof Forge1201GeneratorAccess access) {
             access.ringworld1201$setGeometry(geometry);
+            access.ringworld1201$setTerrainNoiseMapping(settings.terrainNoiseMapping());
             access.ringworld1201$setWallHeight(settings.wallHeightBlocks());
         } else {
             RingWorldMod.LOGGER.warn(
