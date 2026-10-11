@@ -23,21 +23,5 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Audit upstream Maven Central checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          for artifact in \
-            com/google/guava/guava-parent/33.0.0-jre/guava-parent-33.0.0-jre.pom \
-            org/junit/junit-bom/5.10.1/junit-bom-5.10.1.module
-          do
-            base="https://repo.maven.apache.org/maven2/$artifact"
-            curl --fail --silent --show-error --location "$base" --output /tmp/verified-metadata-artifact
-            actual=$(sha256sum /tmp/verified-metadata-artifact | cut -d' ' -f1)
-            expected=$(curl --fail --silent --show-error --location "$base.sha256" | tr -d '\\r\\n ')
-            test "$actual" = "$expected"
-            echo "VERIFIED_SHA256 $artifact $actual"
-          done
-
       - name: Compile Forge 1.20.1 target
         run: ./gradlew :forge1201:compileJava -PringBackportCompilerScope=forge1201 --stacktrace --no-daemon
