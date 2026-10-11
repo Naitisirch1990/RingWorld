@@ -66,6 +66,7 @@ public final class Forge1201RingRuntime {
 
         RingGeometry geometry = geometryFor(level);
         for (Entity entity : level.getAllEntities()) {
+            if (entity == null) continue;
             double sourceX = entity.getX();
             if (!geometry.needsCanonicalWrap(sourceX)) continue;
             entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
