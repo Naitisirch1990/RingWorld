@@ -6,7 +6,8 @@
   "refmap": "ringworld.refmap.json",
   "mixins": [
     "Forge1201NoiseGeneratorMixin",
-    "Forge1201ChunkGeneratorMixin"
+    "Forge1201ChunkGeneratorMixin",
+    "Forge1201ChunkMapMixin"
   ],
   "client": [],
   "injectors": {
