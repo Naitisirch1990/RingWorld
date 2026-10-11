@@ -2,8 +2,12 @@ package dev.ringworld.forge1201;
 
 import com.mojang.logging.LogUtils;
 import dev.ringworld.world.RingTerrainNoiseMapping;
+import dev.ringworld.world.RingWorldGeneratorAccess;
 import dev.ringworld.world.RingWorldLayouts;
 import dev.ringworld.world.RingWorldSettings;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -36,6 +40,11 @@ public final class RingWorldForge1201 {
         RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.overworld());
         RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.nether());
         RingTerrainNoiseMapping.requireSafeNewWorldGeometry(settings.end());
+
+        attachGenerator(event.getServer().overworld(), settings.overworld());
+        attachGenerator(event.getServer().getLevel(Level.NETHER), settings.nether());
+        attachGenerator(event.getServer().getLevel(Level.END), settings.end());
+
         LOGGER.info(
                 "RingWorld saved layout ready (seed={}): Overworld={}x{}, Nether={}x{}, End={}x{}, terrainMapping={}",
                 settings.generatorSeed(),
@@ -43,5 +52,25 @@ public final class RingWorldForge1201 {
                 settings.nether().circumferenceBlocks(), settings.nether().widthBlocks(),
                 settings.end().circumferenceBlocks(), settings.end().widthBlocks(),
                 RingTerrainNoiseMapping.diagnosticName(RingTerrainNoiseMapping.CURRENT));
+    }
+
+    private static void attachGenerator(
+            ServerLevel level,
+            RingWorldLayouts.RingLayout layout) {
+        if (level == null) {
+            LOGGER.warn("RingWorld could not attach {}: dimension is not loaded", layout.dimensionPath());
+            return;
+        }
+        ChunkGenerator generator = level.getChunkSource().getGenerator();
+        if (!(generator instanceof RingWorldGeneratorAccess access)) {
+            LOGGER.warn("RingWorld could not attach {}: generator {} is not a NoiseBasedChunkGenerator",
+                    layout.dimensionPath(), generator.getClass().getName());
+            return;
+        }
+        access.ringworld$setLayout(layout);
+        access.ringworld$setTerrainNoiseMapping(RingTerrainNoiseMapping.CURRENT);
+        LOGGER.info("Attached ring generator policy to {}: circumference={} width={} chunks={}x{}",
+                layout.dimensionPath(), layout.circumferenceBlocks(), layout.widthBlocks(),
+                layout.circumferenceChunks(), layout.widthChunks());
     }
 }
