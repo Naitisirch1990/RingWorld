@@ -30,6 +30,26 @@ jobs:
       - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
         run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
 
+      - name: Verify distributable Forge jar contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          jars=(forge1201/build/libs/*.jar)
+          main_jars=()
+          for jar in "${jars[@]}"; do
+            [[ "$jar" == *-sources.jar ]] || main_jars+=("$jar")
+          done
+          [[ "${#main_jars[@]}" -eq 1 ]] || { echo "Expected one main mod JAR, found ${#main_jars[@]}"; exit 1; }
+          jar="${main_jars[0]}"
+          for entry in META-INF/mods.toml ringworld.forge.mixins.json ringworld.refmap.json dev/ringworld/platform/forge1201/mixin/Forge1201ChunkMapMixin.class dev/ringworld/platform/forge1201/Forge1201RingRuntime.class; do
+            if ! unzip -Z1 "$jar" | grep -Fxq "$entry"; then
+              echo "Missing required packaged entry: $entry"
+              exit 1
+            fi
+          done
+          echo "Forge 1.20.1 distributable JAR contains loader metadata, mixins, refmap and runtime."
+
       - name: Validate periodic chunk arithmetic for all project dimensions
         run: |
           mkdir -p "$RUNNER_TEMP/ringworld-core"
