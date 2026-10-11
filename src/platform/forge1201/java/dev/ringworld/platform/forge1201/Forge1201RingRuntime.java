@@ -1,6 +1,7 @@
 package dev.ringworld.platform.forge1201;
 
 import dev.ringworld.RingWorldMod;
+import dev.ringworld.world.RingGenerationBoundary;
 import dev.ringworld.world.RingGeometry;
 import dev.ringworld.world.RingNavigationAccess;
 import dev.ringworld.world.RingTerrainNoiseMapping;
@@ -15,8 +16,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -44,6 +47,26 @@ public final class Forge1201RingRuntime {
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel level) {
             GEOMETRY.remove(level);
+        }
+    }
+
+    /**
+     * Edge style v3 is deliberately repaired when an already-generated chunk
+     * is loaded. This lets existing RingWorld saves gain the level twenty-block
+     * wall and quiet approach without deleting/regenerating the world.
+     */
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
+        if (!(event.getLevel() instanceof ServerLevel level)
+                || !(event.getChunk() instanceof LevelChunk chunk)
+                || !Forge1201DimensionProfiles.isRingDimension(level)) return;
+        RingGeometry geometry = geometryFor(level);
+        if (geometry == null || !RingGenerationBoundary.intersectsBoundaryReserve(chunk, geometry)) return;
+        if (RingGenerationBoundary.migrateLegacyRim(chunk, geometry, 0)) {
+            RingWorldMod.LOGGER.debug(
+                    "Updated RingWorld edge chunk {} in {} to rim style {}",
+                    chunk.getPos(), Forge1201DimensionProfiles.diagnosticName(level),
+                    RingGenerationBoundary.RIM_STYLE_VERSION);
         }
     }
 
