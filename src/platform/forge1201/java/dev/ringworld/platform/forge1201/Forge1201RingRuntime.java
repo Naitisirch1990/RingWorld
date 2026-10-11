@@ -64,12 +64,19 @@ public final class Forge1201RingRuntime {
         if (event.phase != TickEvent.Phase.END) return;
         if (!(event.level instanceof ServerLevel level) || level.dimension() != Level.OVERWORLD) return;
 
-        RingGeometry geometry = GEOMETRY.computeIfAbsent(level, Forge1201RingRuntime::attach);
+        RingGeometry geometry = geometryFor(level);
         for (Entity entity : level.getAllEntities()) {
             double sourceX = entity.getX();
             if (!geometry.needsCanonicalWrap(sourceX)) continue;
             entity.setPos(geometry.wrapX(sourceX), entity.getY(), entity.getZ());
         }
+    }
+
+    /** Allocation-free geometry lookup for Forge 1.20.1 server hot paths. */
+    public static RingGeometry geometryFor(ServerLevel level) {
+        if (level.dimension() != Level.OVERWORLD) return null;
+        RingGeometry geometry = GEOMETRY.get(level);
+        return geometry != null ? geometry : attach(level);
     }
 
     private static RingGeometry attach(ServerLevel level) {
