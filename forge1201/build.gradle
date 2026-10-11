@@ -74,6 +74,16 @@ minecraft {
     }
 }
 
+// Gradle 8.10 and the 1.21.1 root Loom project are configured under JDK 21,
+// but Minecraft/Forge 1.20.1 itself must launch on Java 17. ForgeGradle run
+// tasks do not automatically inherit the JavaCompile toolchain, so pin their
+// JavaExec launcher explicitly instead of switching the JVM that runs Gradle.
+tasks.matching { it.name in ['runClient', 'runServer'] }.configureEach {
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 repositories {
     mavenCentral()
 }
