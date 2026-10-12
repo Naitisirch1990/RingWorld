@@ -21,21 +21,20 @@ import org.joml.Matrix4f;
 
 /**
  * Client-only low-poly representation of the complete RingWorld beyond normal
- * chunk render distance. It is deliberately independent of the physical ring
- * radius: gameplay remains 61,440 blocks around, while the atlas is compressed
- * into a sky-scale model so the ring is unmistakable from the ground.
+ * chunk render distance. Gameplay remains the real 61,440-block circumference;
+ * this distant mesh is compressed to sky scale so the complete ring can remain
+ * visible without asking Minecraft to render tens of thousands of normal chunks.
  *
- * <p>This first pass is the same kind of placeholder described by the visual
- * reference: deterministic pseudo-biome colours and coarse relief. A later
- * cache can replace these samples with real generated terrain without changing
- * the projection/render architecture.</p>
+ * <p>The mesh now progressively adopts real surface height and map colour from
+ * chunks the client has actually loaded. Unsampled cells still use the synthetic
+ * fallback until the server-backed full-ring terrain atlas is available.</p>
  */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, value = Dist.CLIENT,
         bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class Forge1201RingAtlasRenderer {
     private static final double TAU = Math.PI * 2.0;
-    private static final int ANGULAR_SEGMENTS = 256;
-    private static final int WIDTH_SEGMENTS = 20;
+    private static final int ANGULAR_SEGMENTS = Forge1201RingTerrainAtlas.ANGULAR_SEGMENTS;
+    private static final int WIDTH_SEGMENTS = Forge1201RingTerrainAtlas.WIDTH_SEGMENTS;
 
     /** Sky-scale radius; opposite surface is roughly twice this distance overhead. */
     private static final double VISUAL_RADIUS = 240.0;
@@ -57,6 +56,10 @@ public final class Forge1201RingAtlasRenderer {
         if (minecraft.level == null || minecraft.level.dimension() != Level.OVERWORLD) return;
         RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
         if (!isRenderableGeometry(geometry)) return;
+
+        // Learn only from chunks Minecraft already has in memory. The cache is canonical,
+        // so a sample remains useful after the player crosses the periodic X seam.
+        Forge1201RingTerrainAtlas.refreshLoadedTerrain(minecraft.level, geometry);
 
         Vec3 camera = event.getCamera().getPosition();
         if (!isFinite(camera)) return;
@@ -120,12 +123,12 @@ public final class Forge1201RingAtlasRenderer {
                 double z1 = lerp(minZ, maxZ, (zi + 1.0) / WIDTH_SEGMENTS);
                 double midX = geometry.wrapX(camera.x + midAngle * geometry.circumferenceBlocks() / TAU);
                 double midZ = (z0 + z1) * 0.5;
-                int rgb = atlasColor(midX, midZ);
+                int rgb = atlasColor(midX, midZ, geometry);
 
-                double h00 = atlasHeight(worldX0, z0);
-                double h10 = atlasHeight(worldX1, z0);
-                double h11 = atlasHeight(worldX1, z1);
-                double h01 = atlasHeight(worldX0, z1);
+                double h00 = atlasHeight(worldX0, z0, geometry);
+                double h10 = atlasHeight(worldX1, z0, geometry);
+                double h11 = atlasHeight(worldX1, z1, geometry);
+                double h01 = atlasHeight(worldX0, z1, geometry);
 
                 AtlasPoint p00 = point(a0, h00, z0, camera);
                 AtlasPoint p10 = point(a1, h10, z0, camera);
@@ -155,8 +158,8 @@ public final class Forge1201RingAtlasRenderer {
 
                 double x0 = geometry.wrapX(camera.x + a0 * geometry.circumferenceBlocks() / TAU);
                 double x1 = geometry.wrapX(camera.x + a1 * geometry.circumferenceBlocks() / TAU);
-                double h0 = atlasHeight(x0, edgeZ);
-                double h1 = atlasHeight(x1, edgeZ);
+                double h0 = atlasHeight(x0, edgeZ, geometry);
+                double h1 = atlasHeight(x1, edgeZ, geometry);
                 // Visual lip is intentionally exaggerated; the physical wall remains ten blocks.
                 double top0 = h0 + 22.0;
                 double top1 = h1 + 22.0;
@@ -195,8 +198,18 @@ public final class Forge1201RingAtlasRenderer {
         return (int)Math.round(238.0 * t);
     }
 
-    /** Coarse deterministic relief: enough silhouette now, replaceable by cached real heights later. */
-    private static double atlasHeight(double x, double z) {
+    private static double atlasHeight(double x, double z, RingGeometry geometry) {
+        double fallback = placeholderHeight(x, z);
+        return Forge1201RingTerrainAtlas.height(x, z, geometry, fallback);
+    }
+
+    private static int atlasColor(double x, double z, RingGeometry geometry) {
+        int fallback = placeholderColor(x, z);
+        return Forge1201RingTerrainAtlas.color(x, z, geometry, fallback);
+    }
+
+    /** Synthetic fallback used only while a canonical atlas cell has not been observed. */
+    private static double placeholderHeight(double x, double z) {
         double continental = Math.sin(x * TAU / 7900.0)
                 + 0.55 * Math.cos((x + z * 1.8) * TAU / 3100.0);
         if (continental < -0.78) return 63.0;
@@ -209,24 +222,24 @@ public final class Forge1201RingAtlasRenderer {
         return 66.0 + hills + mountains;
     }
 
-    /** Placeholder biome map; large smooth patches make the full ring readable at sky scale. */
-    private static int atlasColor(double x, double z) {
+    /** Synthetic colour fallback; real sampled cells always override this value. */
+    private static int placeholderColor(double x, double z) {
         double continental = Math.sin(x * TAU / 7900.0)
                 + 0.55 * Math.cos((x + z * 1.8) * TAU / 3100.0);
-        if (continental < -0.78) return 0x3E72B8; // ocean
+        if (continental < -0.78) return 0x3E72B8;
 
         double temperature = Math.sin((x - 1800.0) * TAU / 13700.0)
                 + 0.30 * Math.cos(z * TAU / 1900.0);
         double wetness = Math.cos((x + 700.0) * TAU / 6100.0)
                 + 0.45 * Math.sin((x - z) * TAU / 2700.0);
-        double height = atlasHeight(x, z);
+        double height = placeholderHeight(x, z);
 
-        if (height > 86.0 || temperature < -0.88) return 0xE8EEEE; // snow/high mountains
-        if (temperature > 0.82 && wetness < -0.50) return 0xB9653F; // badlands
-        if (temperature > 0.58 && wetness < 0.12) return 0xD8C783; // desert
-        if (wetness > 0.72) return 0x315F3A; // dark forest
-        if (wetness > 0.20) return 0x4E8145; // forest
-        return 0x6EA453; // plains
+        if (height > 86.0 || temperature < -0.88) return 0xE8EEEE;
+        if (temperature > 0.82 && wetness < -0.50) return 0xB9653F;
+        if (temperature > 0.58 && wetness < 0.12) return 0xD8C783;
+        if (wetness > 0.72) return 0x315F3A;
+        if (wetness > 0.20) return 0x4E8145;
+        return 0x6EA453;
     }
 
     private static void vertex(BufferBuilder builder, Matrix4f pose, AtlasPoint p,
