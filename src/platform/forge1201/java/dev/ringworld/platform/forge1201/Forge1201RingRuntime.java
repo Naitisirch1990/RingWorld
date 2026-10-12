@@ -8,6 +8,7 @@ import dev.ringworld.world.RingTerrainNoiseMapping;
 import dev.ringworld.world.RingWorldSettings;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.server.level.ServerLevel;
@@ -28,6 +29,7 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class Forge1201RingRuntime {
     private static final Map<ServerLevel, RingGeometry> GEOMETRY = new IdentityHashMap<>();
+    private static final Map<ServerLevel, Map<Long, LevelChunk>> RIM_REPAIRS = new IdentityHashMap<>();
 
     private Forge1201RingRuntime() { }
 
@@ -47,26 +49,50 @@ public final class Forge1201RingRuntime {
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel level) {
             GEOMETRY.remove(level);
+            RIM_REPAIRS.remove(level);
         }
     }
 
     /**
-     * Edge style v3 is deliberately repaired when an already-generated chunk
-     * is loaded. This lets existing RingWorld saves gain the level twenty-block
-     * wall and quiet approach without deleting/regenerating the world.
+     * Forge fires Load before FULL promotion. Mutating a LevelChunk here can
+     * re-enter chunk loading through block callbacks and deadlock the server.
+     * New chunks already receive their rim during generation; old ones wait
+     * for a tick with a fully available neighbourhood.
      */
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
-        if (!(event.getLevel() instanceof ServerLevel level)
+        if (event.isNewChunk() || !(event.getLevel() instanceof ServerLevel level)
                 || !(event.getChunk() instanceof LevelChunk chunk)
                 || !Forge1201DimensionProfiles.isRingDimension(level)) return;
         RingGeometry geometry = geometryFor(level);
         if (geometry == null || !RingGenerationBoundary.intersectsBoundaryReserve(chunk, geometry)) return;
-        if (RingGenerationBoundary.migrateLegacyRim(chunk, geometry, 0)) {
-            RingWorldMod.LOGGER.debug(
-                    "Updated RingWorld edge chunk {} in {} to rim style {}",
-                    chunk.getPos(), Forge1201DimensionProfiles.diagnosticName(level),
-                    RingGenerationBoundary.RIM_STYLE_VERSION);
+        RIM_REPAIRS.computeIfAbsent(level, ignored -> new LinkedHashMap<>())
+                .put(chunk.getPos().toLong(), chunk);
+    }
+
+    @SubscribeEvent
+    public static void onChunkUnload(ChunkEvent.Unload event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        Map<Long, LevelChunk> pending = RIM_REPAIRS.get(level);
+        if (pending != null) pending.remove(event.getChunk().getPos().toLong());
+    }
+
+    private static void repairReadyRims(ServerLevel level, RingGeometry geometry) {
+        Map<Long, LevelChunk> pending = RIM_REPAIRS.get(level);
+        if (pending == null || pending.isEmpty()) return;
+        int repaired = 0;
+        for (LevelChunk chunk : new ArrayList<>(pending.values())) {
+            int x = chunk.getPos().x, z = chunk.getPos().z;
+            boolean ready = level.getChunkSource().getChunkNow(x, z) == chunk;
+            for (int dx = -1; ready && dx <= 1; dx++) {
+                for (int dz = -1; ready && dz <= 1; dz++) {
+                    ready = level.getChunkSource().getChunkNow(x + dx, z + dz) != null;
+                }
+            }
+            if (!ready) continue;
+            pending.remove(chunk.getPos().toLong());
+            RingGenerationBoundary.migrateLegacyRim(chunk, geometry, 0);
+            if (++repaired >= 2) break;
         }
     }
 
@@ -90,6 +116,7 @@ public final class Forge1201RingRuntime {
 
         RingGeometry geometry = geometryFor(level);
         if (geometry == null) return;
+        repairReadyRims(level, geometry);
         List<Entity> toWrap = new ArrayList<>();
         for (Entity entity : level.getAllEntities()) {
             if (entity != null && !entity.isRemoved()

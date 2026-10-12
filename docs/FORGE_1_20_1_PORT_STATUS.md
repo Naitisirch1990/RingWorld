@@ -64,3 +64,20 @@ pack is required. Embeddium and shader-replacing mods remain unqualified.
 CI adds an opt-in copied-world capture fixture for road, upward, rim and seam
 views. Captures require manual inspection and are not multiplayer or movement
 qualification. It never opens a user's existing save.
+
+### First in-world capture findings
+
+Run `38296473785` built alpha 2 and passed dedicated-server/client bootstrap.
+The capture process timed out on shutdown. Its first camera was inside stone
+(Y=92 at a column whose surface was Y=125); later views did not verify arrival
+and therefore cannot qualify rim/seam visuals. Do not ship this checkpoint as
+a visually validated improvement.
+
+The Forge edge-load handler also mutated chunks inside `ChunkEvent.Load`,
+which Forge explicitly warns can run before FULL promotion and deadlock level
+interactions. New chunks now keep the rim already installed during generation.
+Existing chunks queue repairs for END ticks with a loaded 3×3 neighbourhood,
+at most two repairs per tick, with unload cleanup. The updated visual fixture
+uses a road-tunnel camera and an above-terrain camera, requires server teleport
+completion plus actual client position/orientation, and records a server stack
+on arrival timeout. Clean shutdown remains required. Runtime recheck pending.

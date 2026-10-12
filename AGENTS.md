@@ -1366,3 +1366,14 @@ Completion means:
 - real terrain and the distant ring remain aligned while looking upward;
 - Nether and End remain unchanged;
 - unit build and relevant integration tests pass.
+
+## Forge 1.20.1 rim-load/capture follow-up (2026-10-12)
+
+Never mutate LevelChunk terrain in Forge ChunkEvent.Load: it may precede FULL
+promotion. Queue legacy rim repairs for END ticks after the current chunk and
+its 3×3 neighbourhood are available via non-loading getChunkNow; skip new
+chunks, which already receive generated rims, and remove pending work on unload.
+Visual fixtures must verify server acknowledgement and actual client camera
+arrival. The first alpha-2 camera at Y=92 was inside stone (surface Y=125),
+and repeated screenshots after unverified teleports are not rim/seam evidence.
+Run 38296473785 passed build/bootstrap but failed clean visual completion.

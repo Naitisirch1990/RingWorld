@@ -1,6 +1,7 @@
 package dev.ringworld.platform.forge1201.client;
 
 import dev.ringworld.RingWorldMod;
+import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
 import java.io.File;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -16,20 +17,23 @@ import net.minecraftforge.fml.common.Mod;
 public final class Forge1201VisualSmoke {
     private static final boolean ENABLED = Boolean.getBoolean("ringworld.visualSmoke");
     private static final String[] NAMES = {"01-road", "02-up", "03-rim", "04-seam"};
-    private static final double[][] VIEWS = {{80,92,0,-90,0},{80,92,0,-90,-75},
-            {80,88,-980,180,12},{61430,92,0,-90,0}};
+    private static final double[][] VIEWS = {{80,73,0,-90,0},{80,200,0,-90,-65},
+            {80,105,-980,180,35},{61430,200,0,-90,20}};
     private static int stage, frames;
     private static long started;
     private static boolean positioned, waiting;
+    private static volatile boolean serverPositioned;
+    private static long arrived;
+    private static boolean failed;
     private Forge1201VisualSmoke() { }
     @SubscribeEvent
     public static void frame(RenderLevelStageEvent event) {
-        if (!ENABLED || event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        if (!ENABLED || failed || event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null || mc.getSingleplayerServer() == null || mc.screen != null) return;
         if (stage >= VIEWS.length) return;
         if (!positioned) {
-            positioned = true; started = System.nanoTime(); frames = 0;
+            positioned = true; started = System.nanoTime(); frames = 0; arrived = 0; serverPositioned = false;
             double[] view = VIEWS[stage];
             var id = mc.player.getUUID();
             var server = mc.getSingleplayerServer();
@@ -40,11 +44,40 @@ public final class Forge1201VisualSmoke {
                 player.getAbilities().flying = true; player.onUpdateAbilities();
                 server.overworld().setDayTime(6000);
                 player.connection.teleport(view[0], view[1], view[2], (float)view[3], (float)view[4]);
+                serverPositioned = true;
             });
             RingWorldMod.LOGGER.info("[forge-visual] preparing {}", NAMES[stage]);
         }
+        double[] target = VIEWS[stage];
+        var geometry = Forge1201ClientTopology.activeGeometry();
+        boolean atTarget = serverPositioned && geometry != null
+                && Math.abs(geometry.shortestCircumferenceDelta(mc.player.getX(), target[0])) < 0.5
+                && Math.abs(mc.player.getY() - target[1]) < 0.5
+                && Math.abs(mc.player.getZ() - target[2]) < 0.5
+                && Math.abs(net.minecraft.util.Mth.wrapDegrees(mc.player.getYRot() - target[3])) < 2
+                && Math.abs(mc.player.getXRot() - target[4]) < 2;
+        if (!atTarget) {
+            frames = 0; arrived = 0;
+            if (System.nanoTime() - started > 60_000_000_000L) {
+                failed = true;
+                RingWorldMod.LOGGER.error("[forge-visual] FAIL camera did not reach {}: position={} yaw={} pitch={} serverAck={}",
+                        NAMES[stage], mc.player.position(), mc.player.getYRot(), mc.player.getXRot(), serverPositioned);
+                Thread.getAllStackTraces().forEach((thread, stack) -> {
+                    if (thread.getName().equals("Server thread")) {
+                        RingWorldMod.LOGGER.error("[forge-visual] server thread state={}", thread.getState());
+                        for (StackTraceElement element : stack) RingWorldMod.LOGGER.error("  at {}", element);
+                    }
+                });
+                mc.stop();
+            }
+            return;
+        }
+        if (arrived == 0) {
+            arrived = System.nanoTime();
+            RingWorldMod.LOGGER.info("[forge-visual] arrived {} position={}", NAMES[stage], mc.player.position());
+        }
         frames++;
-        if (waiting || frames < 100 || System.nanoTime() - started < 15_000_000_000L) return;
+        if (waiting || frames < 100 || System.nanoTime() - arrived < 15_000_000_000L) return;
         waiting = true;
         String name = NAMES[stage] + ".png";
         Screenshot.grab(mc.gameDirectory, name, mc.getMainRenderTarget(), message -> mc.execute(() -> {
