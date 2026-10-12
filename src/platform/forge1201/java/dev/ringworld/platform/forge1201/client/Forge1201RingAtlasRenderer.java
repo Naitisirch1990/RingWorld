@@ -26,8 +26,10 @@ import org.joml.Matrix4f;
  * visible without asking Minecraft to render tens of thousands of normal chunks.
  *
  * <p>The mesh progressively adopts real surface height and map colour from chunks
- * the client has actually loaded. Unsampled cells still use the synthetic fallback
- * until a server-backed full-ring terrain atlas is available.</p>
+ * the client has actually loaded. Unsampled cells use a multi-scale synthetic
+ * fallback until a server-backed full-ring terrain atlas is available. Vertex
+ * colours are sampled independently so broad atlas cells blend instead of
+ * appearing as the hard rectangular bands visible in the first alpha.</p>
  */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, value = Dist.CLIENT,
         bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -42,6 +44,9 @@ public final class Forge1201RingAtlasRenderer {
     private static final double WIDTH_SCALE = 0.18;
     /** Terrain vertical exaggeration inside the atlas. */
     private static final double HEIGHT_SCALE = 0.55;
+    /** Match the physical ten-block rim closely instead of drawing an oversized grey lip. */
+    private static final double VISUAL_WALL_HEIGHT = 11.0;
+    private static final double WALL_ALPHA_SCALE = 0.72;
 
     /**
      * Do not let low render-distance settings pull the sky mesh too close to the player.
@@ -129,9 +134,6 @@ public final class Forge1201RingAtlasRenderer {
             for (int zi = 0; zi < WIDTH_SEGMENTS; zi++) {
                 double z0 = lerp(minZ, maxZ, zi / (double)WIDTH_SEGMENTS);
                 double z1 = lerp(minZ, maxZ, (zi + 1.0) / WIDTH_SEGMENTS);
-                double midX = geometry.wrapX(camera.x + midAngle * geometry.circumferenceBlocks() / TAU);
-                double midZ = (z0 + z1) * 0.5;
-                int rgb = atlasColor(midX, midZ, geometry);
 
                 double h00 = atlasHeight(worldX0, z0, geometry);
                 double h10 = atlasHeight(worldX1, z0, geometry);
@@ -143,34 +145,41 @@ public final class Forge1201RingAtlasRenderer {
                 AtlasPoint p11 = point(a1, h11, z1, camera);
                 AtlasPoint p01 = point(a0, h01, z1, camera);
 
-                vertex(builder, pose, p00, rgb, alpha);
-                vertex(builder, pose, p10, rgb, alpha);
-                vertex(builder, pose, p11, rgb, alpha);
-                vertex(builder, pose, p01, rgb, alpha);
+                // Independent corner colours let the GPU interpolate biome transitions across
+                // the quad instead of magnifying one flat colour into a giant sky stripe.
+                int c00 = atlasColor(worldX0, z0, geometry);
+                int c10 = atlasColor(worldX1, z0, geometry);
+                int c11 = atlasColor(worldX1, z1, geometry);
+                int c01 = atlasColor(worldX0, z1, geometry);
+
+                vertex(builder, pose, p00, c00, alpha);
+                vertex(builder, pose, p10, c10, alpha);
+                vertex(builder, pose, p11, c11, alpha);
+                vertex(builder, pose, p01, c01, alpha);
             }
         }
     }
 
-    /** Grey curved lips make the finite 2,000-block band legible from inside. */
+    /** Subtle curved lips make the finite 2,000-block band legible without outlining it heavily. */
     private static void drawSideWalls(BufferBuilder builder, Matrix4f pose,
                                       RingGeometry geometry, Vec3 camera, FadeWindow fadeWindow) {
         double[] edges = {geometry.minWidthZ(), geometry.maxWidthZ() + 1.0};
-        final int wallRgb = 0x777B82;
+        final int wallRgb = 0x666B72;
 
         for (double edgeZ : edges) {
             for (int ai = 0; ai < ANGULAR_SEGMENTS; ai++) {
                 double a0 = -Math.PI + TAU * ai / ANGULAR_SEGMENTS;
                 double a1 = -Math.PI + TAU * (ai + 1) / ANGULAR_SEGMENTS;
                 int alpha = fadeAlpha((a0 + a1) * 0.5, fadeWindow);
+                alpha = (int)Math.round(alpha * WALL_ALPHA_SCALE);
                 if (alpha <= 0) continue;
 
                 double x0 = geometry.wrapX(camera.x + a0 * geometry.circumferenceBlocks() / TAU);
                 double x1 = geometry.wrapX(camera.x + a1 * geometry.circumferenceBlocks() / TAU);
                 double h0 = atlasHeight(x0, edgeZ, geometry);
                 double h1 = atlasHeight(x1, edgeZ, geometry);
-                // Visual lip is intentionally exaggerated; the physical wall remains ten blocks.
-                double top0 = h0 + 22.0;
-                double top1 = h1 + 22.0;
+                double top0 = h0 + VISUAL_WALL_HEIGHT;
+                double top1 = h1 + VISUAL_WALL_HEIGHT;
 
                 AtlasPoint p00 = point(a0, h0, edgeZ, camera);
                 AtlasPoint p10 = point(a1, h1, edgeZ, camera);
@@ -217,7 +226,7 @@ public final class Forge1201RingAtlasRenderer {
         if (abs >= fadeWindow.endAngle()) return MAX_ATLAS_ALPHA;
         double t = (abs - fadeWindow.startAngle())
                 / (fadeWindow.endAngle() - fadeWindow.startAngle());
-        t = t * t * (3.0 - 2.0 * t);
+        t = smoothstep(t);
         return (int)Math.round(MAX_ATLAS_ALPHA * t);
     }
 
@@ -231,38 +240,81 @@ public final class Forge1201RingAtlasRenderer {
         return Forge1201RingTerrainAtlas.color(x, z, geometry, fallback);
     }
 
-    /** Synthetic fallback used only while a canonical atlas cell has not been observed. */
+    /**
+     * Multi-scale terrain used only for unseen atlas cells. The first alpha used
+     * very long sine waves, which enlarged into obvious coloured ribbons. Mixing
+     * several wavelengths and both X/Z directions keeps the fallback coherent at
+     * ring scale while giving it mountain chains, coast variation and local relief.
+     */
     private static double placeholderHeight(double x, double z) {
-        double continental = Math.sin(x * TAU / 7900.0)
-                + 0.55 * Math.cos((x + z * 1.8) * TAU / 3100.0);
-        if (continental < -0.78) return 63.0;
+        double continental = 0.62 * Math.sin((x + z * 0.42) * TAU / 6800.0)
+                + 0.38 * Math.cos((x - z * 1.25 + 900.0) * TAU / 3900.0)
+                + 0.24 * Math.sin((x * 0.72 + z * 2.35 - 500.0) * TAU / 2150.0);
 
-        double hills = 7.0 * Math.sin((x + z * 0.7) * TAU / 2200.0)
-                + 4.0 * Math.cos((x - z * 2.1) * TAU / 1250.0);
-        double mountains = Math.max(0.0,
-                Math.sin((x + 900.0) * TAU / 5400.0)
-                        + Math.cos((z - 170.0) * TAU / 1650.0) - 0.65) * 22.0;
-        return 66.0 + hills + mountains;
+        double coast = smoothstep((continental + 0.46) / 0.34);
+        if (coast <= 0.015) return 63.0;
+
+        double rolling = 3.8 * Math.sin((x + z * 1.70) * TAU / 1050.0)
+                + 2.4 * Math.cos((x * 1.35 - z * 1.10) * TAU / 620.0)
+                + 1.2 * Math.sin((x * 2.25 + z * 0.65) * TAU / 330.0);
+
+        double ridgeSignal = Math.sin((x + z * 0.35 + 1300.0) * TAU / 3100.0)
+                + 0.72 * Math.cos((x * 0.82 - z * 1.55) * TAU / 1850.0)
+                - 0.70;
+        double ridge = Math.max(0.0, ridgeSignal);
+        double mountains = ridge * ridge * 24.0;
+
+        double landHeight = 67.0 + rolling + mountains;
+        return lerp(63.0, landHeight, coast);
     }
 
     /** Synthetic colour fallback; real sampled cells always override this value. */
     private static int placeholderColor(double x, double z) {
-        double continental = Math.sin(x * TAU / 7900.0)
-                + 0.55 * Math.cos((x + z * 1.8) * TAU / 3100.0);
-        if (continental < -0.78) return 0x3E72B8;
-
-        double temperature = Math.sin((x - 1800.0) * TAU / 13700.0)
-                + 0.30 * Math.cos(z * TAU / 1900.0);
-        double wetness = Math.cos((x + 700.0) * TAU / 6100.0)
-                + 0.45 * Math.sin((x - z) * TAU / 2700.0);
         double height = placeholderHeight(x, z);
+        double temperature = Math.sin((x - 1800.0 + z * 0.25) * TAU / 11800.0)
+                + 0.28 * Math.cos((x + z * 1.65) * TAU / 2850.0);
+        double wetness = Math.cos((x + 700.0 - z * 0.32) * TAU / 5450.0)
+                + 0.40 * Math.sin((x - z * 1.30) * TAU / 1750.0);
 
-        if (height > 86.0 || temperature < -0.88) return 0xE8EEEE;
-        if (temperature > 0.82 && wetness < -0.50) return 0xB9653F;
-        if (temperature > 0.58 && wetness < 0.12) return 0xD8C783;
-        if (wetness > 0.72) return 0x315F3A;
-        if (wetness > 0.20) return 0x4E8145;
-        return 0x6EA453;
+        int base;
+        if (height < 64.15) {
+            base = 0x3D76B8;
+        } else if (height > 101.0 || (height > 82.0 && temperature < -0.92)) {
+            base = 0xE7ECEC;
+        } else if (height > 90.0) {
+            base = 0x82847F;
+        } else if (temperature > 0.78 && wetness < -0.42) {
+            base = 0xB96A45;
+        } else if (temperature > 0.52 && wetness < 0.08) {
+            base = 0xD6C786;
+        } else if (wetness > 0.68) {
+            base = 0x315E3B;
+        } else if (wetness > 0.14) {
+            base = 0x4E8148;
+        } else {
+            base = 0x70A357;
+        }
+
+        // Small deterministic tint variations stop large same-biome regions from looking painted.
+        double detail = 0.55 * Math.sin((x + z * 1.8) * TAU / 520.0)
+                + 0.45 * Math.cos((x * 1.7 - z) * TAU / 370.0);
+        return tint(base, 1.0 + detail * 0.055);
+    }
+
+    private static int tint(int rgb, double factor) {
+        int r = clampColor((int)Math.round(((rgb >> 16) & 0xFF) * factor));
+        int g = clampColor((int)Math.round(((rgb >> 8) & 0xFF) * factor));
+        int b = clampColor((int)Math.round((rgb & 0xFF) * factor));
+        return (r << 16) | (g << 8) | b;
+    }
+
+    private static int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
+    }
+
+    private static double smoothstep(double t) {
+        t = Math.max(0.0, Math.min(1.0, t));
+        return t * t * (3.0 - 2.0 * t);
     }
 
     private static void vertex(BufferBuilder builder, Matrix4f pose, AtlasPoint p,
