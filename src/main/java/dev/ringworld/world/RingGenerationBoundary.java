@@ -8,28 +8,28 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 
-/** Boundary operations performed during chunk generation, plus one-time repair on loaded legacy edge chunks. */
+/** Boundary operations performed during chunk generation, plus repair of older edge chunks. */
 public final class RingGenerationBoundary {
-    /** Five visible bedrock blocks from the playable side toward each outer edge. */
+    /** Five solid columns form each physical side wall. */
     public static final int RIM_THICKNESS = 5;
-    /** Exactly twenty visible blocks rise above the levelled approach surface. */
-    public static final int VISIBLE_WALL_HEIGHT = 20;
-    /** Completely quiet ground immediately inside each wall. */
-    public static final int APPROACH_CLEARANCE_BLOCKS = 64;
-    /** Additional terrain blend that gently returns from the quiet ground to natural terrain. */
-    public static final int APPROACH_TRANSITION_BLOCKS = 64;
-    /** Increment when rim placement/material semantics change. */
-    public static final int RIM_STYLE_VERSION = 3;
+    /** Project brief: ten visible bedrock blocks above the reference surface. */
+    public static final int VISIBLE_WALL_HEIGHT = 10;
+    /** Shallow island coast immediately inside each wall. */
+    public static final int COAST_WIDTH_BLOCKS = 20;
+    /** Compatibility aliases kept for older diagnostics/config readers. */
+    public static final int APPROACH_CLEARANCE_BLOCKS = COAST_WIDTH_BLOCKS;
+    public static final int APPROACH_TRANSITION_BLOCKS = 0;
+    /** Increment when rim/coast placement semantics change. */
+    public static final int RIM_STYLE_VERSION = 4;
 
-    private static final int BOUNDARY_RESERVE_BLOCKS =
-            RIM_THICKNESS + APPROACH_CLEARANCE_BLOCKS + APPROACH_TRANSITION_BLOCKS;
+    public static final int SEA_LEVEL_Y = (int)RingGeometry.SURFACE_Y;
+    private static final int OUTER_SEABED_Y = SEA_LEVEL_Y - 4;
+    private static final int INNER_SEABED_Y = SEA_LEVEL_Y - 1;
+    private static final int BOUNDARY_RESERVE_BLOCKS = RIM_THICKNESS + COAST_WIDTH_BLOCKS;
 
     private RingGenerationBoundary() { }
 
-    /**
-     * Legacy fixed-height helper retained for old saved metadata and reports.
-     * Project rims now use one fixed world elevation through {@link #localWallTopExclusive}.
-     */
+    /** Legacy helper retained for saved metadata and reports. */
     public static int wallTopExclusive(int worldMinY, int worldHeight, int wallHeightBlocks) {
         if (worldHeight <= 0) throw new IllegalArgumentException("world height must be positive");
         if (wallHeightBlocks < 0) throw new IllegalArgumentException("wall height must be non-negative");
@@ -48,7 +48,7 @@ public final class RingGenerationBoundary {
         return containsZ(pos, geometry.minWidthZ()) || containsZ(pos, geometry.maxWidthZ());
     }
 
-    /** True for chunks that can contain the wall, quiet strip, or smoothing strip. */
+    /** True for chunks that can contain a wall or the twenty-block coast. */
     public static boolean intersectsBoundaryReserve(ChunkAccess chunk, RingGeometry geometry) {
         if (isExterior(chunk, geometry)) return false;
         ChunkPos pos = chunk.getPos();
@@ -67,7 +67,7 @@ public final class RingGenerationBoundary {
         return Math.min(z - geometry.minWidthZ(), geometry.maxWidthZ() - z);
     }
 
-    /** Removes only cross-chunk feature spillover; noise generation is skipped entirely. */
+    /** Removes a chunk that is completely beyond the finite band. */
     public static void clearExterior(ChunkAccess chunk) {
         ChunkPos pos = chunk.getPos();
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
@@ -80,13 +80,46 @@ public final class RingGenerationBoundary {
                 for (int localZ = 0; localZ < 16; localZ++) {
                     for (int localX = 0; localX < 16; localX++) {
                         if (section.getBlockState(localX, localY, localZ).isAir()) continue;
-                        mutable.set(pos.getMinBlockX() + localX, sectionBottomY + localY, pos.getMinBlockZ() + localZ);
+                        mutable.set(pos.getMinBlockX() + localX, sectionBottomY + localY,
+                                pos.getMinBlockZ() + localZ);
                         chunk.removeBlockEntity(mutable);
                         chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
                     }
                 }
             }
         }
+    }
+
+    /**
+     * The width is chunk-count aligned but centred on Z=0, so both edge chunks
+     * contain a few columns beyond the legal band. Those columns must be empty;
+     * otherwise terrain remains visibly suspended behind the barrier.
+     */
+    public static boolean clearOutsidePlayableColumns(ChunkAccess chunk, RingGeometry geometry,
+                                                       boolean trackChanges) {
+        if (isExterior(chunk, geometry)) {
+            if (!trackChanges) clearExterior(chunk);
+            return false;
+        }
+        ChunkPos pos = chunk.getPos();
+        int worldMinY = chunk.getMinBuildHeight();
+        int worldTopExclusive = worldMinY + chunk.getHeight();
+        boolean changed = false;
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        for (int z = pos.getMinBlockZ(); z <= pos.getMaxBlockZ(); z++) {
+            if (z >= geometry.minWidthZ() && z <= geometry.maxWidthZ()) continue;
+            for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
+                for (int y = worldMinY; y < worldTopExclusive; y++) {
+                    mutable.set(x, y, z);
+                    if (chunk.getBlockState(mutable).isAir()) continue;
+                    chunk.removeBlockEntity(mutable);
+                    chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
+                    changed = true;
+                }
+            }
+        }
+        return trackChanges && changed;
     }
 
     /** Ensures the complete playable band has a continuous one-block bedrock floor. */
@@ -108,25 +141,31 @@ public final class RingGenerationBoundary {
         }
     }
 
-    /**
-     * Finishes the boundary after features have run. The inner 64 blocks are
-     * deliberately quiet and level, followed by a 64-block smooth return to
-     * natural terrain. The five-block-thick rim has a perfectly horizontal
-     * crest: twenty visible bedrock blocks above the approach surface, with an
-     * invisible barrier continuing from that crest to the build ceiling.
-     */
+    /** Backwards-compatible overload; Overworld-style island coast is the default. */
     public static void installRim(ChunkAccess chunk, RingGeometry geometry, int ignoredLegacyWallHeightBlocks) {
-        if (!intersectsBoundaryReserve(chunk, geometry)) return;
-        reshapeApproach(chunk, geometry, false);
-        if (containsRim(chunk, geometry)) {
-            installUniformWalls(chunk, geometry, false);
-        }
+        installRim(chunk, geometry, ignoredLegacyWallHeightBlocks, true);
     }
 
     /**
-     * Returns the fixed exclusive bedrock top. The levelled approach occupies
-     * Y=surfaceReferenceY, so the visible wall is the next twenty blocks.
+     * Finishes the finite band after features have run. In the Overworld the
+     * old 64+64 flattened approach is replaced by a twenty-block shallow sea:
+     * a sand seabed slopes from Y=63 to Y=60 while the water surface remains
+     * perfectly level at Y=64. The five-column bedrock wall then rises ten
+     * visible blocks, with invisible barrier from its crest to build height.
      */
+    public static void installRim(ChunkAccess chunk, RingGeometry geometry,
+                                  int ignoredLegacyWallHeightBlocks, boolean islandCoast) {
+        if (isExterior(chunk, geometry)) {
+            clearExterior(chunk);
+            return;
+        }
+        clearOutsidePlayableColumns(chunk, geometry, false);
+        if (!intersectsBoundaryReserve(chunk, geometry)) return;
+        if (islandCoast) reshapeIslandCoast(chunk, geometry, false);
+        if (containsRim(chunk, geometry)) installUniformWalls(chunk, geometry, false);
+    }
+
+    /** Fixed exclusive bedrock top: surface Y + ten visible blocks. */
     static int localWallTopExclusive(ChunkAccess chunk, int x, int probeZ) {
         int worldMinY = chunk.getMinBuildHeight();
         int worldTopExclusive = worldMinY + chunk.getHeight();
@@ -134,59 +173,56 @@ public final class RingGenerationBoundary {
         return (int)Math.max(worldMinY, Math.min(desired, worldTopExclusive));
     }
 
-    private static boolean reshapeApproach(ChunkAccess chunk, RingGeometry geometry, boolean trackChanges) {
+    private static boolean reshapeIslandCoast(ChunkAccess chunk, RingGeometry geometry,
+                                              boolean trackChanges) {
         ChunkPos pos = chunk.getPos();
         int firstZ = Math.max(pos.getMinBlockZ(), geometry.minWidthZ());
         int lastZ = Math.min(pos.getMaxBlockZ(), geometry.maxWidthZ());
-        int plateauY = clamp((int)Math.floor(RingGeometry.SURFACE_Y),
-                chunk.getMinBuildHeight() + 1,
-                chunk.getMinBuildHeight() + chunk.getHeight() - 2);
+        int worldMinY = chunk.getMinBuildHeight();
+        int worldTopExclusive = worldMinY + chunk.getHeight();
         boolean changed = false;
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (int z = firstZ; z <= lastZ; z++) {
             int rimDistance = distanceFromNearestRim(z, geometry);
             if (rimDistance < RIM_THICKNESS || rimDistance >= BOUNDARY_RESERVE_BLOCKS) continue;
-            int approachDistance = rimDistance - RIM_THICKNESS;
+            int coastIndex = rimDistance - RIM_THICKNESS;
+            double t = COAST_WIDTH_BLOCKS <= 1 ? 1.0
+                    : coastIndex / (double)(COAST_WIDTH_BLOCKS - 1);
+            int seabedY = (int)Math.round(OUTER_SEABED_Y
+                    + (INNER_SEABED_Y - OUTER_SEABED_Y) * smoothstep(t));
+            seabedY = clamp(seabedY, worldMinY + 3, Math.min(SEA_LEVEL_Y - 1, worldTopExclusive - 2));
 
             for (int x = pos.getMinBlockX(); x <= pos.getMaxBlockX(); x++) {
-                int originalSurfaceY = findSolidSurfaceY(chunk, x, z);
-                if (originalSurfaceY == Integer.MIN_VALUE) originalSurfaceY = plateauY;
-
-                int targetY;
-                if (approachDistance < APPROACH_CLEARANCE_BLOCKS) {
-                    targetY = plateauY;
-                } else {
-                    double linear = (approachDistance - APPROACH_CLEARANCE_BLOCKS + 1.0)
-                            / APPROACH_TRANSITION_BLOCKS;
-                    double t = smoothstep(Math.max(0.0, Math.min(1.0, linear)));
-                    targetY = (int)Math.round(plateauY + (originalSurfaceY - plateauY) * t);
+                // Remove the old terrain completely above the new seabed.
+                for (int y = seabedY + 1; y < worldTopExclusive; y++) {
+                    changed |= setBlock(chunk, mutable.set(x, y, z),
+                            Blocks.AIR.defaultBlockState(), trackChanges);
                 }
-                targetY = clamp(targetY, chunk.getMinBuildHeight() + 1,
-                        chunk.getMinBuildHeight() + chunk.getHeight() - 2);
 
-                BlockState support = findSupportMaterial(chunk, x, z,
-                        Math.min(targetY, originalSurfaceY));
-                if (support == null) support = Blocks.STONE.defaultBlockState();
-
-                if (originalSurfaceY < targetY) {
-                    for (int y = originalSurfaceY + 1; y <= targetY; y++) {
-                        changed |= setBlock(chunk, mutable.set(x, y, z), support, trackChanges);
-                    }
-                } else {
-                    for (int y = targetY + 1;
-                         y < chunk.getMinBuildHeight() + chunk.getHeight(); y++) {
-                        changed |= setBlock(chunk, mutable.set(x, y, z),
-                                Blocks.AIR.defaultBlockState(), trackChanges);
+                // Give the sand a stable shallow foundation even over caves/water.
+                for (int y = Math.max(worldMinY + 1, seabedY - 2); y < seabedY; y++) {
+                    BlockState current = chunk.getBlockState(mutable.set(x, y, z));
+                    if (current.isAir() || !current.getFluidState().isEmpty()) {
+                        changed |= setBlock(chunk, mutable,
+                                Blocks.SANDSTONE.defaultBlockState(), trackChanges);
                     }
                 }
-                changed |= setBlock(chunk, mutable.set(x, targetY, z), support, trackChanges);
+                changed |= setBlock(chunk, mutable.set(x, seabedY, z),
+                        Blocks.SAND.defaultBlockState(), trackChanges);
+
+                // One common water level on both sides makes the band read as an island.
+                for (int y = seabedY + 1; y <= SEA_LEVEL_Y && y < worldTopExclusive; y++) {
+                    changed |= setBlock(chunk, mutable.set(x, y, z),
+                            Blocks.WATER.defaultBlockState(), trackChanges);
+                }
             }
         }
         return changed;
     }
 
-    private static boolean installUniformWalls(ChunkAccess chunk, RingGeometry geometry, boolean trackChanges) {
+    private static boolean installUniformWalls(ChunkAccess chunk, RingGeometry geometry,
+                                               boolean trackChanges) {
         ChunkPos pos = chunk.getPos();
         int worldMinY = chunk.getMinBuildHeight();
         int worldTopExclusive = worldMinY + chunk.getHeight();
@@ -215,33 +251,8 @@ public final class RingGenerationBoundary {
         return changed;
     }
 
-    private static int findSolidSurfaceY(ChunkAccess chunk, int x, int z) {
-        int worldMinY = chunk.getMinBuildHeight();
-        int worldTopExclusive = worldMinY + chunk.getHeight();
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        for (int y = worldTopExclusive - 1; y > worldMinY; y--) {
-            BlockState state = chunk.getBlockState(mutable.set(x, y, z));
-            if (!state.isAir() && state.getFluidState().isEmpty() && !isRimMaterial(state)) {
-                return y;
-            }
-        }
-        return Integer.MIN_VALUE;
-    }
-
-    private static BlockState findSupportMaterial(ChunkAccess chunk, int x, int z, int startY) {
-        int minY = chunk.getMinBuildHeight() + 1;
-        int y = Math.min(startY, chunk.getMinBuildHeight() + chunk.getHeight() - 2);
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        for (; y >= minY; y--) {
-            BlockState state = chunk.getBlockState(mutable.set(x, y, z));
-            if (!state.isAir() && state.getFluidState().isEmpty() && !isRimMaterial(state)) {
-                return state;
-            }
-        }
-        return null;
-    }
-
-    private static boolean setBlock(ChunkAccess chunk, BlockPos pos, BlockState state, boolean trackChanges) {
+    private static boolean setBlock(ChunkAccess chunk, BlockPos pos, BlockState state,
+                                    boolean trackChanges) {
         if (chunk.getBlockState(pos).equals(state)) return false;
         chunk.removeBlockEntity(pos);
         chunk.setBlockState(pos, state, false);
@@ -256,17 +267,15 @@ public final class RingGenerationBoundary {
         return Math.max(min, Math.min(max, value));
     }
 
-    /**
-     * Repairs generated edge chunks from previous rim styles. This intentionally
-     * covers the complete approach reserve, not only the five wall columns, so
-     * existing saves gain the clean horizon without requiring a new world.
-     */
+    /** Repairs generated edge chunks from previous rim styles. */
     public static boolean migrateLegacyRim(LevelChunk chunk, RingGeometry geometry,
                                            int ignoredLegacyWallHeightBlocks) {
-        if (!intersectsBoundaryReserve(chunk, geometry)) return false;
-        boolean changed = reshapeApproach(chunk, geometry, true);
-        if (containsRim(chunk, geometry)) {
-            changed |= installUniformWalls(chunk, geometry, true);
+        if (isExterior(chunk, geometry)) return false;
+        boolean changed = clearOutsidePlayableColumns(chunk, geometry, true);
+        if (intersectsBoundaryReserve(chunk, geometry)) {
+            boolean overworld = chunk.getLevel().dimension() == net.minecraft.world.level.Level.OVERWORLD;
+            if (overworld) changed |= reshapeIslandCoast(chunk, geometry, true);
+            if (containsRim(chunk, geometry)) changed |= installUniformWalls(chunk, geometry, true);
         }
         if (changed) chunk.setUnsaved(true);
         return changed;
