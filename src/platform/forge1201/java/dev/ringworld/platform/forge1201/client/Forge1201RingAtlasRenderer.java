@@ -25,9 +25,9 @@ import org.joml.Matrix4f;
  * this distant mesh is compressed to sky scale so the complete ring can remain
  * visible without asking Minecraft to render tens of thousands of normal chunks.
  *
- * <p>The mesh now progressively adopts real surface height and map colour from
- * chunks the client has actually loaded. Unsampled cells still use the synthetic
- * fallback until the server-backed full-ring terrain atlas is available.</p>
+ * <p>The mesh progressively adopts real surface height and map colour from chunks
+ * the client has actually loaded. Unsampled cells still use the synthetic fallback
+ * until a server-backed full-ring terrain atlas is available.</p>
  */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, value = Dist.CLIENT,
         bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -42,9 +42,16 @@ public final class Forge1201RingAtlasRenderer {
     private static final double WIDTH_SCALE = 0.18;
     /** Terrain vertical exaggeration inside the atlas. */
     private static final double HEIGHT_SCALE = 0.55;
-    /** Real chunks win near the camera; the atlas softly fades in beyond this angle. */
-    private static final double FADE_START_ANGLE = 0.12;
-    private static final double FADE_END_ANGLE = 0.34;
+
+    /**
+     * Do not let low render-distance settings pull the sky mesh too close to the player.
+     * Above this floor the fade follows the player's configured chunk render distance.
+     */
+    private static final double MIN_FADE_START_ANGLE = 0.04;
+    private static final double FADE_START_RENDER_FACTOR = 0.65;
+    private static final double FADE_END_RENDER_FACTOR = 1.20;
+    private static final double MIN_FADE_SPAN_BLOCKS = 256.0;
+    private static final int MAX_ATLAS_ALPHA = 238;
 
     private Forge1201RingAtlasRenderer() { }
 
@@ -64,6 +71,7 @@ public final class Forge1201RingAtlasRenderer {
         Vec3 camera = event.getCamera().getPosition();
         if (!isFinite(camera)) return;
         Matrix4f pose = event.getPoseStack().last().pose();
+        FadeWindow fadeWindow = fadeWindow(minecraft, geometry);
 
         // The atlas shares Minecraft's global RenderSystem state. Keep every state change
         // tightly scoped so a failed/aborted atlas frame cannot tint or corrupt later terrain.
@@ -78,8 +86,8 @@ public final class Forge1201RingAtlasRenderer {
         try {
             BufferBuilder builder = Tesselator.getInstance().getBuilder();
             builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            drawSurface(builder, pose, geometry, camera);
-            drawSideWalls(builder, pose, geometry, camera);
+            drawSurface(builder, pose, geometry, camera, fadeWindow);
+            drawSideWalls(builder, pose, geometry, camera, fadeWindow);
             BufferUploader.drawWithShader(builder.end());
         } finally {
             // Terrain, entities and translucent passes render after this event. Always return
@@ -104,7 +112,7 @@ public final class Forge1201RingAtlasRenderer {
     }
 
     private static void drawSurface(BufferBuilder builder, Matrix4f pose,
-                                    RingGeometry geometry, Vec3 camera) {
+                                    RingGeometry geometry, Vec3 camera, FadeWindow fadeWindow) {
         double minZ = geometry.minWidthZ();
         double maxZ = geometry.maxWidthZ() + 1.0;
 
@@ -112,7 +120,7 @@ public final class Forge1201RingAtlasRenderer {
             double a0 = -Math.PI + TAU * ai / ANGULAR_SEGMENTS;
             double a1 = -Math.PI + TAU * (ai + 1) / ANGULAR_SEGMENTS;
             double midAngle = (a0 + a1) * 0.5;
-            int alpha = fadeAlpha(midAngle);
+            int alpha = fadeAlpha(midAngle, fadeWindow);
             if (alpha <= 0) continue;
 
             double worldX0 = geometry.wrapX(camera.x + a0 * geometry.circumferenceBlocks() / TAU);
@@ -145,7 +153,7 @@ public final class Forge1201RingAtlasRenderer {
 
     /** Grey curved lips make the finite 2,000-block band legible from inside. */
     private static void drawSideWalls(BufferBuilder builder, Matrix4f pose,
-                                      RingGeometry geometry, Vec3 camera) {
+                                      RingGeometry geometry, Vec3 camera, FadeWindow fadeWindow) {
         double[] edges = {geometry.minWidthZ(), geometry.maxWidthZ() + 1.0};
         final int wallRgb = 0x777B82;
 
@@ -153,7 +161,7 @@ public final class Forge1201RingAtlasRenderer {
             for (int ai = 0; ai < ANGULAR_SEGMENTS; ai++) {
                 double a0 = -Math.PI + TAU * ai / ANGULAR_SEGMENTS;
                 double a1 = -Math.PI + TAU * (ai + 1) / ANGULAR_SEGMENTS;
-                int alpha = fadeAlpha((a0 + a1) * 0.5);
+                int alpha = fadeAlpha((a0 + a1) * 0.5, fadeWindow);
                 if (alpha <= 0) continue;
 
                 double x0 = geometry.wrapX(camera.x + a0 * geometry.circumferenceBlocks() / TAU);
@@ -189,13 +197,28 @@ public final class Forge1201RingAtlasRenderer {
                 (worldZ - camera.z) * WIDTH_SCALE);
     }
 
-    private static int fadeAlpha(double angle) {
+    private static FadeWindow fadeWindow(Minecraft minecraft, RingGeometry geometry) {
+        int renderDistanceChunks = Math.max(2, minecraft.options.getEffectiveRenderDistance());
+        double renderDistanceBlocks = renderDistanceChunks * 16.0;
+        double radiansPerBlock = TAU / geometry.circumferenceBlocks();
+
+        double startAngle = Math.max(
+                MIN_FADE_START_ANGLE,
+                renderDistanceBlocks * FADE_START_RENDER_FACTOR * radiansPerBlock);
+        double endAngle = Math.max(
+                startAngle + MIN_FADE_SPAN_BLOCKS * radiansPerBlock,
+                renderDistanceBlocks * FADE_END_RENDER_FACTOR * radiansPerBlock);
+        return new FadeWindow(startAngle, endAngle);
+    }
+
+    private static int fadeAlpha(double angle, FadeWindow fadeWindow) {
         double abs = Math.abs(angle);
-        if (abs <= FADE_START_ANGLE) return 0;
-        if (abs >= FADE_END_ANGLE) return 238;
-        double t = (abs - FADE_START_ANGLE) / (FADE_END_ANGLE - FADE_START_ANGLE);
+        if (abs <= fadeWindow.startAngle()) return 0;
+        if (abs >= fadeWindow.endAngle()) return MAX_ATLAS_ALPHA;
+        double t = (abs - fadeWindow.startAngle())
+                / (fadeWindow.endAngle() - fadeWindow.startAngle());
         t = t * t * (3.0 - 2.0 * t);
-        return (int)Math.round(238.0 * t);
+        return (int)Math.round(MAX_ATLAS_ALPHA * t);
     }
 
     private static double atlasHeight(double x, double z, RingGeometry geometry) {
@@ -254,6 +277,8 @@ public final class Forge1201RingAtlasRenderer {
     private static double lerp(double a, double b, double t) {
         return a + (b - a) * t;
     }
+
+    private record FadeWindow(double startAngle, double endAngle) { }
 
     private record AtlasPoint(double x, double y, double z) { }
 }
