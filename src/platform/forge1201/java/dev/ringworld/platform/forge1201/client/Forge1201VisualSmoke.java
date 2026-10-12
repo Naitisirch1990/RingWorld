@@ -42,7 +42,7 @@ public final class Forge1201VisualSmoke {
                 if (player == null) return;
                 player.setGameMode(GameType.CREATIVE);
                 player.getAbilities().flying = true; player.onUpdateAbilities();
-                server.overworld().setDayTime(6000);
+                server.overworld().setDayTime(stage >= 4 ? 3000 : 6000);
                 player.connection.teleport(view[0], view[1], view[2], (float)view[3], (float)view[4]);
                 if (stage == 4) {
                     // Actual blocks only, on the opposite side of this disposable world.
@@ -50,13 +50,13 @@ public final class Forge1201VisualSmoke {
                     var level = server.overworld();
                     int center = 80 + dev.ringworld.platform.forge1201.Forge1201RingRuntime.geometryFor(level).circumferenceBlocks()/2;
                     var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
-                    for (int x=center-64;x<center+64;x++) for(int z=-64;z<64;z++) {
+                    for (int x=center-128;x<center+128;x++) for(int z=-128;z<128;z++) {
                         var chunk=level.getChunk(x>>4,z>>4);
                         chunk.setBlockState(pos.set(x,300,z),net.minecraft.world.level.block.Blocks.RED_CONCRETE.defaultBlockState(),false);
                         if(Math.abs(x-center)<16 && Math.abs(z)<16)
                             for(int y=180;y<300;y++) chunk.setBlockState(pos.set(x,y,z),net.minecraft.world.level.block.Blocks.RED_CONCRETE.defaultBlockState(),false);
                     }
-                    for(int x=(center-64)>>4;x<=((center+63)>>4);x++) for(int z=-4;z<4;z++)
+                    for(int x=(center-128)>>4;x<=((center+127)>>4);x++) for(int z=-8;z<8;z++)
                         dev.ringworld.platform.forge1201.Forge1201AtlasServer.capture(level,level.getChunk(x,z));
                     var atlas=dev.ringworld.platform.forge1201.Forge1201AtlasServer.atlas(level);
                     int column=center/8,row=(4-atlas.geometry().minWidthZ())/8;
@@ -73,7 +73,7 @@ public final class Forge1201VisualSmoke {
                     var level=server.overworld();
                     int center=80+dev.ringworld.platform.forge1201.Forge1201RingRuntime.geometryFor(level).circumferenceBlocks()/2;
                     var pos=new net.minecraft.core.BlockPos.MutableBlockPos();
-                    for(int x=center-64;x<center+64;x++) for(int z=-64;z<64;z++)
+                    for(int x=center-128;x<center+128;x++) for(int z=-128;z<128;z++)
                         level.getChunk(x>>4,z>>4).setBlockState(pos.set(x,300,z),net.minecraft.world.level.block.Blocks.BLUE_CONCRETE.defaultBlockState(),false);
                     // No explicit capture: normal atlas recapture must notice the edit.
                 }

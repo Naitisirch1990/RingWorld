@@ -51,6 +51,7 @@ public final class Forge1201AtlasServer {
         CompletableFuture<Void> saving = CompletableFuture.completedFuture(null);
         State(ServerLevel level) {
             var settings = RingWorldSettings.get(level);
+            running = dev.ringworld.world.RingWorldConfig.load().pregenerateTerrainAtlas();
             path = level.getServer().getWorldPath(LevelResource.ROOT).resolve("ringworld/forge1201-terrain-atlas.rwat.gz");
             RingTerrainAtlas found = null;
             if (Files.isRegularFile(path)) try {
@@ -99,6 +100,14 @@ public final class Forge1201AtlasServer {
                 block=chunk.getBlockState(pos.set(x,--y,z));
             // Empty End/void columns still have a known sample. Overworld only for now.
             int rgb=block.isAir() ? 0x333333 : block.getMapColor(level,pos).col;
+            var biome=chunk.getNoiseBiome(x>>2,y>>2,z>>2).value();
+            if(block.getFluidState().is(net.minecraft.tags.FluidTags.WATER))
+                rgb=dev.ringworld.world.RingSurfaceLod.applyTextureLuminance(biome.getWaterColor(),.58);
+            else if(block.is(Blocks.GRASS_BLOCK) || block.is(Blocks.GRASS) || block.is(Blocks.TALL_GRASS)
+                    || block.is(Blocks.FERN) || block.is(Blocks.LARGE_FERN))
+                rgb=dev.ringworld.world.RingSurfaceLod.applyTextureLuminanceWithMapFallback(biome.getGrassColor(x,z),rgb,.68);
+            else if(block.is(net.minecraft.tags.BlockTags.LEAVES) || block.is(Blocks.VINE))
+                rgb=dev.ringworld.world.RingSurfaceLod.applyTextureLuminanceWithMapFallback(biome.getFoliageColor(),rgb,.52);
             if (s.atlas.putBlockSample(x,z,y+1,rgb)) {
                 int id=(x/128)*s.atlas.tileRows()+(z-g.minWidthZ())/128;
                 s.populated.set(id); s.dirty=true;

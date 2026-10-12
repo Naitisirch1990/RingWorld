@@ -196,6 +196,26 @@ jobs:
             test -s "forge1201/run-visual/screenshots/$view.png"
           done
 
+      - name: Verify far construction is actually visible and changes color
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          folder=Path('forge1201/run-visual/screenshots')
+          red=Image.open(folder/'05-far-build.png').convert('RGB')
+          blue=Image.open(folder/'06-far-edit.png').convert('RGB')
+          w,h=red.size
+          box=(w//2-100,h//2-100,w//2+100,h//2+100)
+          a=list(red.crop(box).getdata()); b=list(blue.crop(box).getdata())
+          visible=sum(r>80 and r>g*1.6 and r>bl*1.6 for r,g,bl in a)
+          changed=sum(r>80 and r>g*1.6 and r>bl*1.6 and bb>br*1.6 and bb>bg*1.3
+                      for (r,g,bl),(br,bg,bb) in zip(a,b))
+          print(f'Far build red pixels={visible}, pixels revised to blue={changed}')
+          assert visible>=8 and changed>=8, 'Received atlas data is not enough: the real construction must appear in the image'
+          PY
+
       - name: Remove speculative empty region files from packaged test world
         if: always()
         shell: bash

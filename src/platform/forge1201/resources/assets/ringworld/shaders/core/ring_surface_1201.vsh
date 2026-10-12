@@ -8,12 +8,17 @@ uniform vec4 RingLayout;
 out vec4 vertexColor;
 out float handoff;
 const float TAU=6.28318530718;
+float ringAngle(float theta, float gain) {
+    float t=abs(theta), edge=1.0-t/3.14159265359;
+    return theta+sign(theta)*.785398163397*tanh(4.0*(gain-1.0)*t/3.14159265359)*edge*edge;
+}
+
 void main() {
     float c=RingLayout.x;
     float dx=mod(Position.x-RingCamera.x+c*.5,c)-c*.5;
     float theta=TAU*dx/c;
-    float gain=max(1.0,min(8.0,c/TAU/512.0));
-    float angle=2.0*atan(gain*sin(theta*.5),cos(theta*.5));
+    float gain=max(1.0,min(16.0,c/TAU/512.0));
+    float angle=ringAngle(theta,gain);
     float radius=c/TAU/gain;
     float vr=radius+RingLayout.y-Position.y;
     float cr=radius+RingLayout.y-RingCamera.y;

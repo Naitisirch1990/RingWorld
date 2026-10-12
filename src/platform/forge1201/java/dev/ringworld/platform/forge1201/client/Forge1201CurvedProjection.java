@@ -6,7 +6,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** Forge renderer-only curvature profile; canonical world coordinates stay unchanged. */
 public final class Forge1201CurvedProjection {
-    public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(8, geometry.radius() / 512.0)); }
+    public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(16, geometry.radius() / 512.0)); }
     public static double radiusAt(RingGeometry geometry, double y) { return geometry.radius() / gain(geometry) + geometry.surfaceReferenceY() - y; }
     private static double widthScale(RingGeometry geometry, double a) {
         return 1 + (Math.min(1, 2 / gain(geometry)) - 1) * Math.pow(Math.sin(a * .5), 2);
@@ -62,7 +62,12 @@ public final class Forge1201CurvedProjection {
     }
 
     private static double visualAngle(double angle, double gain) {
-        // Monotone, periodic angular magnification. radius/gain preserves local block scale.
-        return 2 * Math.atan2(gain * Math.sin(angle * .5), Math.cos(angle * .5));
+        // Derivative is gain at the camera and 1 at the opposite side. Unlike
+        // the half-angle magnifier, this does not crush distant buildings.
+        double turns = Math.floor((angle + Math.PI) / (2 * Math.PI));
+        double local = angle - turns * 2 * Math.PI;
+        double t = Math.abs(local), edge = 1 - t / Math.PI;
+        double bend = Math.PI * .25 * Math.tanh(4 * (gain - 1) * t / Math.PI) * edge * edge;
+        return local + Math.signum(local) * bend + turns * 2 * Math.PI;
     }
 }
