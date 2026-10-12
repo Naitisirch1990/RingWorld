@@ -3,8 +3,8 @@ package dev.ringworld.platform.forge1201.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
+import dev.ringworld.platform.forge1201.client.Forge1201CurvedProjection;
 import dev.ringworld.world.RingGeometry;
-import dev.ringworld.world.RingObjectTransform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
@@ -32,14 +32,14 @@ abstract class Forge1201EntityRenderMixin {
             matrices.translate(x, y, z);
             return;
         }
-        RingObjectTransform transform = RingObjectTransform.fromCameraRelative(
-                geometry, camera, x, y, z);
-        Vec3 localPosition = transform.cameraLocalPosition();
+        Vec3 anchor = camera.add(x, y, z);
+        Vec3 localPosition = Forge1201CurvedProjection.toCameraLocal(geometry, anchor, camera);
         matrices.translate(localPosition.x, localPosition.y, localPosition.z);
         // Entity renderers apply their normal yaw/pose transforms after this
         // common translation. Rotating here makes those transforms operate in
         // the entity's own tangent frame while the local player remains at a
         // zero-angle frame and therefore keeps vanilla controls unchanged.
-        matrices.mulPose(Axis.ZP.rotation((float)transform.tangentAngleRadians()));
+        matrices.mulPose(Axis.ZP.rotation((float)Forge1201CurvedProjection.angle(
+                geometry, camera.x, anchor.x)));
     }
 }

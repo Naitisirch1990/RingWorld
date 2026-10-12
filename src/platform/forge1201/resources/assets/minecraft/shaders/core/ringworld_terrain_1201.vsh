@@ -28,7 +28,10 @@ const float TAU = 6.28318530717958647692;
 vec3 ringPosition(vec3 localFlat) {
     float circumference = float(RingWorldLayout.y);
     float radius = circumference / TAU;
-    float angle = TAU * localFlat.x / circumference;
+    float intrinsicAngle = TAU * localFlat.x / circumference;
+    // Match RingGeometry.tangentFrameAngle: stronger bend near each view while
+    // preserving exactly 2π after one circumference (no far-side seam).
+    float angle = intrinsicAngle + 0.65 * sin(intrinsicAngle);
     float vertexRadius = radius + RingWorldVertical.x - (RingWorldCamera.y + localFlat.y);
     float cameraRadius = radius + RingWorldVertical.x - RingWorldCamera.y;
     return vec3(
@@ -39,7 +42,8 @@ vec3 ringPosition(vec3 localFlat) {
 }
 
 vec3 ringNormal(vec3 sourceNormal, float localX) {
-    float angle = TAU * localX / float(RingWorldLayout.y);
+    float intrinsicAngle = TAU * localX / float(RingWorldLayout.y);
+    float angle = intrinsicAngle + 0.65 * sin(intrinsicAngle);
     float c = cos(angle);
     float s = sin(angle);
     return vec3(

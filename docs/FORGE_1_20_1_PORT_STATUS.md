@@ -3,7 +3,8 @@
 ## Current checkpoint — 2026-10-12
 
 This is an unofficial, experimental Forge 47.4.10 / Minecraft 1.20.1 backport,
-using Java 17. It is not a finished or visually qualified release.
+using Java 17. It is not a finished or visually qualified release. Alpha 3 visual
+changes are being checked against a copied save before any visual claim.
 
 At commit `26dce48`, Actions run `38281886797`, attempt 2, passed the JAR
 build/content checks, periodic chunk arithmetic and dedicated-server startup
@@ -18,8 +19,11 @@ bootstrap evidence, not an in-world visual or packaged-client qualification.
 The latest source includes a fixed-Y=71 road with mountain tunnels, client
 terrain-atlas interpolation and distant-ring visual changes. Automatic custom
 cities, pyramids and monuments are outside the user's current requested scope.
-Alpha 2 retains observed client terrain and shows an explicitly low-detail
-silhouette for unsampled areas; it is not a complete server-derived atlas.
+Alpha 2 retained observed client terrain and showed a pale silhouette for
+unsampled areas. Alpha 3 extends the distant mesh fade from the vanilla render
+range to the ring horizon, applies a periodic stronger-curvature profile to
+live terrain, entities and the distant mesh, and doubles the visible fascia
+width. Those changes do not yet add unknown opposite-side terrain to the atlas.
 
 ## Diagnostic workflow
 
@@ -57,7 +61,8 @@ A complete persisted/server-backed atlas is still pending.
 Finite-Z exterior neighbours no longer block rim meshing; real interior
 neighbours retain vanilla readiness checks. Curved bounding-box visibility,
 non-occluding ring traversal, and entity/block-entity tangent poses are ported
-from the reference architecture. Render distance remains bounded.
+from the reference architecture. The atlas mesh now fades near half the ring
+circumference instead of the vanilla render-distance boundary.
 
 The road generator and all world layouts are unchanged. No external shader
 pack is required. Embeddium and shader-replacing mods remain unqualified.
@@ -98,3 +103,17 @@ still look soft/obvious. This is not complete distant-map fidelity, natural
 walking/seam qualification, multiplayer qualification, or renderer-mod
 compatibility qualification. No percentage improvement or FPS gain is claimed.
 The four screenshots are included in the test package.
+
+
+## Alpha 3 visual candidate — runtime review pending
+
+The alpha-3 curve uses `theta + 0.65 sin(theta)` consistently in the Forge
+terrain shader, curved entity and block-entity presentation, frustum envelope,
+and distant-atlas mesh. It remains exactly periodic at one full circumference;
+world generation and the fixed road are unchanged. The far mesh's fade distance
+is now half the circumference, and its rim strip is 10 blocks wide rather than
+5. The alpha-3 candidate still uses only real terrain samples observed by the
+client. The reference mod's complete far-side relief comes from its
+server-generated, persisted and synchronized terrain atlas; this Forge 1.20.1
+port does not yet include that atlas transport. No external shader pack is
+required. The renderer changes still need a fresh build and inspected captures.

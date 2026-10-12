@@ -1,6 +1,7 @@
 package dev.ringworld.platform.forge1201.mixin;
 
 import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
+import dev.ringworld.platform.forge1201.client.Forge1201CurvedProjection;
 import dev.ringworld.world.RingGeometry;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.phys.AABB;
@@ -23,6 +24,6 @@ abstract class Forge1201FrustumMixin {
                 || !Double.isFinite(box.minY) || !Double.isFinite(box.maxY)
                 || !Double.isFinite(box.minZ) || !Double.isFinite(box.maxZ)) return box;
         Vec3 camera = new Vec3(camX, camY, camZ);
-        return geometry.toCameraLocalBounds(box, camera).move(camera);
+        return Forge1201CurvedProjection.toCameraLocalBounds(geometry, box, camera).move(camera);
     }
 }

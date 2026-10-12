@@ -35,7 +35,10 @@ public final class Forge1201RingAtlasRenderer {
         Forge1201RingTerrainAtlas.refreshLoadedTerrain(mc.level, geometry);
         Vec3 camera = event.getCamera().getPosition();
         Matrix4f pose = event.getPoseStack().last().pose();
-        double view = Math.max(2, mc.options.getEffectiveRenderDistance()) * 16.0;
+        // The atlas replaces terrain beyond vanilla's chunk draw distance.
+        // Tying its fade to render distance made it vanish around seven chunks,
+        // even though this curved mesh spans the full ring.
+        double view = geometry.circumferenceBlocks() * 0.5;
         RenderSystem.enableDepthTest(); RenderSystem.depthMask(false);
         RenderSystem.disableCull(); RenderSystem.enableBlend(); RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1, 1, 1, 1);
@@ -58,11 +61,15 @@ public final class Forge1201RingAtlasRenderer {
                         surfaceVertex(b, pose, geometry, camera, x0, z1, view);
                         z = z1;
                     }
-                    for (double edge : new double[]{geometry.minWidthZ() + 5, geometry.maxWidthZ() - 4}) {
-                        wallVertex(b, pose, geometry, camera, x0, 64, edge, view);
-                        wallVertex(b, pose, geometry, camera, x1, 64, edge, view);
-                        wallVertex(b, pose, geometry, camera, x1, 75, edge, view);
-                        wallVertex(b, pose, geometry, camera, x0, 75, edge, view);
+                    // Double the apparent fascia from 5 to 10 blocks by placing
+                    // its inner face five blocks farther into the ring.
+                    for (double edge : new double[]{geometry.minWidthZ() + 10, geometry.maxWidthZ() - 9}) {
+                        double base0 = Forge1201RingTerrainAtlas.sample(x0, edge, geometry).height();
+                        double base1 = Forge1201RingTerrainAtlas.sample(x1, edge, geometry).height();
+                        wallVertex(b, pose, geometry, camera, x0, base0, edge, view);
+                        wallVertex(b, pose, geometry, camera, x1, base1, edge, view);
+                        wallVertex(b, pose, geometry, camera, x1, base1 + 10, edge, view);
+                        wallVertex(b, pose, geometry, camera, x0, base0 + 10, edge, view);
                     }
                     d = next;
                 }
@@ -90,7 +97,7 @@ public final class Forge1201RingAtlasRenderer {
     }
     private static void vertex(BufferBuilder b, Matrix4f pose, RingGeometry geometry, Vec3 camera,
                                 double x, double y, double z, int rgb, double view) {
-        Vec3 p = geometry.toCameraLocal(new Vec3(x, y, z), camera);
+        Vec3 p = Forge1201CurvedProjection.toCameraLocal(geometry, new Vec3(x, y, z), camera);
         double dx = geometry.shortestCircumferenceDelta(camera.x, x);
         double distance = Math.sqrt(dx * dx + (z - camera.z) * (z - camera.z));
         double t = Math.max(0, Math.min(1, (distance - view * 0.55) / (view * 0.35)));

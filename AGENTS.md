@@ -1,7 +1,7 @@
 # RingWorld agent guide
 
-Forge alpha 2 rendering repair: retain physical-scale proxy/live alignment,
-finite-Z exterior meshing exception and world-instance atlas isolation.
+Forge alpha 3 rendering repair: keep the road intact, extend the distant atlas
+toward the ring horizon, strengthen its periodic curvature and widen the visual rim.
 `runVisualClient` uses only the disposable CI copy and requires four captures;
 inspect those images before claiming visual readiness. Preserve the road.
 

@@ -3,8 +3,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
+import dev.ringworld.platform.forge1201.client.Forge1201CurvedProjection;
 import dev.ringworld.world.RingGeometry;
-import dev.ringworld.world.RingObjectTransform;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -77,11 +77,11 @@ abstract class Forge1201BlockEntityRenderMixin {
             poseStack.translate(x, y, z);
             return;
         }
-        RingObjectTransform transform = RingObjectTransform.fromCameraRelative(
-                geometry, camera, x, y, z);
-        Vec3 local = transform.cameraLocalPosition();
+        Vec3 anchor = camera.add(x, y, z);
+        Vec3 local = Forge1201CurvedProjection.toCameraLocal(geometry, anchor, camera);
         poseStack.translate(local.x, local.y, local.z);
-        poseStack.mulPose(Axis.ZP.rotation((float)transform.tangentAngleRadians()));
+        poseStack.mulPose(Axis.ZP.rotation((float)Forge1201CurvedProjection.angle(
+                geometry, camera.x, anchor.x)));
     }
 
 }
