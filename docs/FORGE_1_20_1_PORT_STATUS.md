@@ -117,3 +117,23 @@ client. The reference mod's complete far-side relief comes from its
 server-generated, persisted and synchronized terrain atlas; this Forge 1.20.1
 port does not yet include that atlas transport. No external shader pack is
 required. The renderer changes still need a fresh build and inspected captures.
+
+### Alpha 3 runtime captures — 2026-10-12
+
+Commit `797c0f5121eafb09966f6f036d1985cf7e2f11b1`, Actions run `38305144038`,
+passed the Forge build and JAR checks, periodic arithmetic, dedicated-server
+startup, client bootstrap, all four position-verified visual captures, and
+clean integrated-server shutdown. The fixed road remained in place and the
+widened rim rendered. The stronger curve and longer horizon mesh load without
+runtime or shader errors.
+
+Manual review also confirms that `02-up` still shows a pale, featureless far
+surface and `04-seam` still exposes unsampled areas. The view-range fade was a
+real early cutoff, but removing it cannot create the missing relief: the 1.20.1
+client atlas still contains only terrain chunks observed by that client. The
+reference implementation's far-side detail comes from a persisted,
+server-generated atlas streamed to the client. Alpha 3 is a visual test
+checkpoint, not a complete-map fix or a release candidate. No external shader
+pack is required; an atlas server/persistence/synchronization port is the
+remaining work for real far-side topography.
+
