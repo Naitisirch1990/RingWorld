@@ -1,3 +1,5 @@
+> Forge alpha 2 rendering changes are under test: bundled shaders, physical-scale distant terrain and finite-edge rendering. No external shader pack is required; see the backport status for validation limits.
+
 > **Experimental Forge 1.20.1 branch:** see [current backport status](docs/FORGE_1_20_1_PORT_STATUS.md). The latest build, dedicated-server and client-bootstrap gates pass; in-world visual/gameplay qualification remains pending. The 1.21.1 evidence below does not qualify this backport.
 
 # RingWorld

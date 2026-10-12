@@ -1,5 +1,10 @@
 # RingWorld agent guide
 
+Forge alpha 2 rendering repair: retain physical-scale proxy/live alignment,
+finite-Z exterior meshing exception and world-instance atlas isolation.
+`runVisualClient` uses only the disposable CI copy and requires four captures;
+inspect those images before claiming visual readiness. Preserve the road.
+
 Forge 1.20.1 branch checkpoint (2026-10-12): consult
 `docs/FORGE_1_20_1_PORT_STATUS.md` before applying older loader evidence below.
 Keep failed client console/log/crash artifacts and preserve the original process

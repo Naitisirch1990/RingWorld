@@ -1,179 +1,94 @@
 package dev.ringworld.platform.forge1201.client;
 
 import dev.ringworld.world.RingGeometry;
-import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 
-/**
- * Session-local coarse terrain cache for the full-ring renderer.
- *
- * <p>The cache never asks Minecraft to load or generate a chunk. It only samples
- * cells whose presentation-chart position is already resident on the client,
- * then stores the result in canonical ring coordinates. This makes observations
- * survive seam crossings and lets the distant ring progressively replace the
- * synthetic placeholder with terrain that actually exists in the world.</p>
- *
- * <p>Reads are bilinearly filtered between neighbouring atlas cells. That matters
- * a lot on the sky-scale ring: without filtering, each coarse sample becomes a
- * visibly rectangular colour/height band when enlarged overhead.</p>
+/** Real eight-block surface samples, retained across chunk unloads in one world.
+ * Never loads or generates chunks. Unknown cells are explicitly unsampled.
  */
 public final class Forge1201RingTerrainAtlas {
-    public static final int ANGULAR_SEGMENTS = 512;
-    public static final int WIDTH_SEGMENTS = 32;
-
-    private static final long REFRESH_INTERVAL_TICKS = 20L;
-    private static final double[] HEIGHTS = new double[ANGULAR_SEGMENTS * WIDTH_SEGMENTS];
-    private static final int[] COLORS = new int[ANGULAR_SEGMENTS * WIDTH_SEGMENTS];
-    private static final boolean[] KNOWN = new boolean[ANGULAR_SEGMENTS * WIDTH_SEGMENTS];
-
-    private static int cachedCircumference = -1;
-    private static int cachedWidth = -1;
-    private static long lastRefreshTick = Long.MIN_VALUE;
-
+    private static final int STEP = 8;
+    private static ClientLevel sampledLevel;
+    private static int columns, rows, circumference, width, minZ;
+    private static float[] heights = new float[0];
+    private static int[] colors = new int[0];
+    private static boolean[] known = new boolean[0];
+    private static long tick = Long.MIN_VALUE;
+    private static int cursor;
     private Forge1201RingTerrainAtlas() { }
 
-    /** Samples only atlas points backed by chunks that are already loaded client-side. */
     public static void refreshLoadedTerrain(ClientLevel level, RingGeometry geometry) {
-        ensureGeometry(geometry);
-        long gameTime = level.getGameTime();
-        if (lastRefreshTick != Long.MIN_VALUE
-                && gameTime >= lastRefreshTick
-                && gameTime - lastRefreshTick < REFRESH_INTERVAL_TICKS) {
-            return;
+        if (sampledLevel != level || circumference != geometry.circumferenceBlocks()
+                || width != geometry.widthBlocks()) {
+            sampledLevel = level;
+            circumference = geometry.circumferenceBlocks(); width = geometry.widthBlocks();
+            minZ = geometry.minWidthZ(); columns = circumference / STEP; rows = width / STEP;
+            heights = new float[columns * rows]; colors = new int[heights.length];
+            known = new boolean[heights.length]; tick = Long.MIN_VALUE; cursor = 0;
         }
-        lastRefreshTick = gameTime;
-
-        Minecraft minecraft = Minecraft.getInstance();
-        double referenceX = minecraft.player != null ? minecraft.player.getX() : 0.0;
-        int minZ = geometry.minWidthZ();
-        int width = geometry.widthBlocks();
-
-        for (int ai = 0; ai < ANGULAR_SEGMENTS; ai++) {
-            double canonicalX = (ai + 0.5) * geometry.circumferenceBlocks() / ANGULAR_SEGMENTS;
-            int presentationX = (int)Math.floor(geometry.nearestImageX(canonicalX, referenceX));
-
-            for (int zi = 0; zi < WIDTH_SEGMENTS; zi++) {
-                int worldZ = (int)Math.floor(minZ + (zi + 0.5) * width / WIDTH_SEGMENTS);
-                BlockPos probe = new BlockPos(presentationX,
-                        RingGeometry.SURFACE_Y > level.getMinBuildHeight()
-                                ? (int)RingGeometry.SURFACE_Y : level.getMinBuildHeight(),
-                        worldZ);
-                if (!level.hasChunkAt(probe)) continue;
-
-                int surfaceY = level.getHeight(Heightmap.Types.WORLD_SURFACE, presentationX, worldZ);
-                if (surfaceY <= level.getMinBuildHeight()) continue;
-
-                BlockPos surface = new BlockPos(presentationX, surfaceY - 1, worldZ);
-                BlockState state = level.getBlockState(surface);
-                int index = index(ai, zi);
-                HEIGHTS[index] = surfaceY;
-                COLORS[index] = state.getMapColor(level, surface).col;
-                KNOWN[index] = true;
+        if (tick == level.getGameTime()) return;
+        tick = level.getGameTime();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        int radius = Math.min(32, Math.max(2, mc.options.getEffectiveRenderDistance()));
+        int side = radius * 2 + 1, total = side * side;
+        int centerX = mc.player.blockPosition().getX() >> 4;
+        int centerZ = mc.player.blockPosition().getZ() >> 4;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        // Bounded work per tick, including at 32 chunks; a full loaded neighbourhood
+        // is swept again so block changes do not remain permanently stale.
+        for (int work = 0; work < Math.min(96, total); work++) {
+            int n = cursor++ % total;
+            int cx = centerX + n % side - radius, cz = centerZ + n / side - radius;
+            if (geometry.isExteriorChunkZ(cz)) continue;
+            LevelChunk chunk = level.getChunkSource().getChunk(cx, cz, false);
+            if (chunk == null) continue;
+            for (int dx = 4; dx < 16; dx += STEP) {
+                int x = cx * 16 + dx;
+                for (int dz = 4; dz < 16; dz += STEP) {
+                    int z = cz * 16 + dz;
+                    if (z < minZ || z >= minZ + width) continue;
+                    int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, dx, dz);
+                    if (y < level.getMinBuildHeight()) continue;
+                    // ChunkAccess.getHeight is the highest block, not first air.
+                    BlockState state = chunk.getBlockState(pos.set(x, y, z));
+                    // The invisible barrier above the physical rim is not a visible surface.
+                    while (y > level.getMinBuildHeight() && (state.isAir() || state.is(Blocks.BARRIER))) {
+                        state = chunk.getBlockState(pos.set(x, --y, z));
+                    }
+                    if (state.isAir()) continue;
+                    int i = (geometry.wrapBlockX(x) / STEP) * rows + (z - minZ) / STEP;
+                    heights[i] = y + 1; colors[i] = state.getMapColor(level, pos).col; known[i] = true;
+                }
             }
         }
     }
 
-    public static boolean hasSample(double canonicalX, double worldZ, RingGeometry geometry) {
-        ensureGeometry(geometry);
-        GridPosition grid = gridPosition(canonicalX, worldZ, geometry);
-        return KNOWN[index(grid.x0(), grid.z0())]
-                || KNOWN[index(grid.x1(), grid.z0())]
-                || KNOWN[index(grid.x0(), grid.z1())]
-                || KNOWN[index(grid.x1(), grid.z1())];
-    }
-
-    public static double height(double canonicalX, double worldZ, RingGeometry geometry,
-                                double fallback) {
-        ensureGeometry(geometry);
-        GridPosition grid = gridPosition(canonicalX, worldZ, geometry);
-
-        double h00 = sampleHeight(grid.x0(), grid.z0(), fallback);
-        double h10 = sampleHeight(grid.x1(), grid.z0(), fallback);
-        double h01 = sampleHeight(grid.x0(), grid.z1(), fallback);
-        double h11 = sampleHeight(grid.x1(), grid.z1(), fallback);
-
-        double low = lerp(h00, h10, grid.tx());
-        double high = lerp(h01, h11, grid.tx());
-        return lerp(low, high, grid.tz());
-    }
-
-    public static int color(double canonicalX, double worldZ, RingGeometry geometry,
-                            int fallback) {
-        ensureGeometry(geometry);
-        GridPosition grid = gridPosition(canonicalX, worldZ, geometry);
-
-        int c00 = sampleColor(grid.x0(), grid.z0(), fallback);
-        int c10 = sampleColor(grid.x1(), grid.z0(), fallback);
-        int c01 = sampleColor(grid.x0(), grid.z1(), fallback);
-        int c11 = sampleColor(grid.x1(), grid.z1(), fallback);
-        return bilerpColor(c00, c10, c01, c11, grid.tx(), grid.tz());
-    }
-
-    private static GridPosition gridPosition(double canonicalX, double worldZ,
-                                             RingGeometry geometry) {
-        // Atlas values represent cell centres, hence the half-cell offset before interpolation.
-        double gx = geometry.wrapX(canonicalX)
-                * ANGULAR_SEGMENTS / geometry.circumferenceBlocks() - 0.5;
-        int rawX0 = (int)Math.floor(gx);
-        double tx = gx - Math.floor(gx);
-        int x0 = Math.floorMod(rawX0, ANGULAR_SEGMENTS);
-        int x1 = Math.floorMod(rawX0 + 1, ANGULAR_SEGMENTS);
-
-        double gz = (worldZ - geometry.minWidthZ())
-                * WIDTH_SEGMENTS / geometry.widthBlocks() - 0.5;
-        gz = Math.max(0.0, Math.min(WIDTH_SEGMENTS - 1.0, gz));
-        int z0 = (int)Math.floor(gz);
-        int z1 = Math.min(WIDTH_SEGMENTS - 1, z0 + 1);
-        double tz = gz - z0;
-
-        return new GridPosition(x0, x1, z0, z1, tx, tz);
-    }
-
-    private static double sampleHeight(int ai, int zi, double fallback) {
-        int index = index(ai, zi);
-        return KNOWN[index] ? HEIGHTS[index] : fallback;
-    }
-
-    private static int sampleColor(int ai, int zi, int fallback) {
-        int index = index(ai, zi);
-        return KNOWN[index] ? COLORS[index] : fallback;
-    }
-
-    private static int bilerpColor(int c00, int c10, int c01, int c11, double tx, double tz) {
-        int r = (int)Math.round(lerp(
-                lerp((c00 >> 16) & 0xFF, (c10 >> 16) & 0xFF, tx),
-                lerp((c01 >> 16) & 0xFF, (c11 >> 16) & 0xFF, tx), tz));
-        int g = (int)Math.round(lerp(
-                lerp((c00 >> 8) & 0xFF, (c10 >> 8) & 0xFF, tx),
-                lerp((c01 >> 8) & 0xFF, (c11 >> 8) & 0xFF, tx), tz));
-        int b = (int)Math.round(lerp(
-                lerp(c00 & 0xFF, c10 & 0xFF, tx),
-                lerp(c01 & 0xFF, c11 & 0xFF, tx), tz));
-        return (r << 16) | (g << 8) | b;
-    }
-
-    private static double lerp(double a, double b, double t) {
-        return a + (b - a) * t;
-    }
-
-    private static int index(int ai, int zi) {
-        return ai * WIDTH_SEGMENTS + zi;
-    }
-
-    private static void ensureGeometry(RingGeometry geometry) {
-        if (cachedCircumference == geometry.circumferenceBlocks()
-                && cachedWidth == geometry.widthBlocks()) {
-            return;
+    public static Sample sample(double x, double z, RingGeometry geometry) {
+        if (sampledLevel == null || circumference != geometry.circumferenceBlocks()
+                || width != geometry.widthBlocks()) return new Sample(64, 0xA6B7AC, 0);
+        double gx = geometry.wrapX(x) / STEP - 0.5;
+        double gz = Math.max(0, Math.min(rows - 1, (z - minZ) / STEP - 0.5));
+        int x0 = (int)Math.floor(gx), z0 = (int)Math.floor(gz);
+        double tx = gx - Math.floor(gx), tz = gz - z0;
+        double h = 0, r = 0, g = 0, b = 0, confidence = 0;
+        for (int a = 0; a < 2; a++) for (int c = 0; c < 2; c++) {
+            int i = Math.floorMod(x0 + a, columns) * rows + Math.min(rows - 1, z0 + c);
+            double weight = (a == 0 ? 1 - tx : tx) * (c == 0 ? 1 - tz : tz);
+            // Unknown samples have no fabricated coast, mountains or biome colours.
+            double y = known[i] ? heights[i] : 64;
+            int color = known[i] ? colors[i] : 0xA6B7AC;
+            confidence += known[i] ? weight : 0;
+            h += y * weight; r += ((color >> 16) & 255) * weight;
+            g += ((color >> 8) & 255) * weight; b += (color & 255) * weight;
         }
-        Arrays.fill(KNOWN, false);
-        cachedCircumference = geometry.circumferenceBlocks();
-        cachedWidth = geometry.widthBlocks();
-        lastRefreshTick = Long.MIN_VALUE;
+        return new Sample(h, ((int)r << 16) | ((int)g << 8) | (int)b, confidence);
     }
-
-    private record GridPosition(int x0, int x1, int z0, int z1, double tx, double tz) { }
+    public record Sample(double height, int color, double confidence) { }
 }

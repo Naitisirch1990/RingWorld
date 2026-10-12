@@ -42,3 +42,25 @@ independently reviewed Forge dependency pins remain a release requirement.
 - Verify all-dimension portal/seam behavior and save/reconnect.
 - Validate TacZ and Embeddium separately; compatibility is not established.
 - Retain exact build/source identity and MPL-2.0 notices with test deliveries.
+
+## Alpha 2 rendering repair — pending runtime verification
+
+User screenshots show the sky-scale proxy detached from live terrain and
+invisible finite-band edges. The Forge adapter now uses the shared physical
+cylinder for both surface representations, with a dedicated bundled far-depth
+shader. The radius-240 miniature cylinder and synthetic biome stripes are
+removed. Real client samples use eight-block spacing and world-instance-owned
+storage; unloaded observations survive within that world, while a world switch
+clears them. Unknown areas remain a pale silhouette, not claimed real terrain.
+A complete persisted/server-backed atlas is still pending.
+
+Finite-Z exterior neighbours no longer block rim meshing; real interior
+neighbours retain vanilla readiness checks. Curved bounding-box visibility,
+non-occluding ring traversal, and entity/block-entity tangent poses are ported
+from the reference architecture. Render distance remains bounded.
+
+The road generator and all world layouts are unchanged. No external shader
+pack is required. Embeddium and shader-replacing mods remain unqualified.
+CI adds an opt-in copied-world capture fixture for road, upward, rim and seam
+views. Captures require manual inspection and are not multiplayer or movement
+qualification. It never opens a user's existing save.

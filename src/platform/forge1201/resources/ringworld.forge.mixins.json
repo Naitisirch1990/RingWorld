@@ -31,7 +31,12 @@
     "Forge1201ClientChunkStorageMixin",
     "Forge1201ClientPacketListenerMixin",
     "Forge1201ClientConnectionMixin",
-    "Forge1201ShaderInstanceMixin"
+    "Forge1201ShaderInstanceMixin",
+    "Forge1201FrustumMixin",
+    "Forge1201RimChunkRenderMixin",
+    "Forge1201TerrainVisibilityMixin",
+    "Forge1201EntityRenderMixin",
+    "Forge1201BlockEntityRenderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

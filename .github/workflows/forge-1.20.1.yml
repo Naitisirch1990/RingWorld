@@ -28,7 +28,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build diagnostic Forge 1.20.1 jar with Java 17 toolchain
-        run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --stacktrace --no-daemon 2>&1 | tee forge1201/build-console.log
 
       - name: Verify distributable Forge jar contents
         shell: bash
@@ -173,6 +176,25 @@ jobs:
           [[ -f "$LOG" ]] && tail -n 350 "$LOG"
           exit 1
 
+      - name: Capture real-world Forge visual views
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p forge1201/run-visual/saves
+          cp -a forge1201/run-server/world forge1201/run-visual/saves/RingWorldVisual
+          rm -f forge1201/run-visual/saves/RingWorldVisual/session.lock
+          printf 'renderDistance:12\nsimulationDistance:6\nmaxFps:60\npauseOnLostFocus:false\n' > forge1201/run-visual/options.txt
+          set +e
+          timeout 300s xvfb-run -a ./gradlew :forge1201:runVisualClient -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon 2>&1 | tee forge1201/run-visual/console.log
+          status=${PIPESTATUS[0]}
+          set -e
+          [[ "$status" -eq 0 ]]
+          grep -q '\[forge-visual\] CAPTURE_PASS' forge1201/run-visual/logs/latest.log
+          for view in 01-road 02-up 03-rim 04-seam; do
+            test -s "forge1201/run-visual/screenshots/$view.png"
+          done
+
       - name: Remove speculative empty region files from packaged test world
         if: always()
         shell: bash
@@ -187,10 +209,15 @@ jobs:
         with:
           name: ringworld-forge-1.20.1-diagnostic
           path: |
+            forge1201/build-console.log
             forge1201/build/libs/*.jar
             forge1201/run-server/world
             forge1201/run-server/logs/latest.log
             forge1201/run-client/console.log
             forge1201/run-client/logs/
             forge1201/run-client/crash-reports/
+            forge1201/run-visual/console.log
+            forge1201/run-visual/logs/
+            forge1201/run-visual/crash-reports/
+            forge1201/run-visual/screenshots/
           if-no-files-found: warn
