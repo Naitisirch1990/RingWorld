@@ -29,7 +29,7 @@ public record RingChunkTopology(int circumferenceChunks) {
         int raw = Math.abs(first - second);
         int periodicDistance = Math.min(raw, circumferenceChunks - raw);
         long dx = Math.max(0, periodicDistance - edgeAllowance);
-        long dz = Math.max(0, Math.abs(z - centerZ) - edgeAllowance);
+        long dz = Math.max(0L, Math.abs((long) z - centerZ) - edgeAllowance);
         return dx * dx + dz * dz < (long) viewDistance * viewDistance;
     }
 }
