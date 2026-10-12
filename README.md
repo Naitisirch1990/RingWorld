@@ -1,3 +1,5 @@
+> **Experimental Forge 1.20.1 branch:** see [current backport status](docs/FORGE_1_20_1_PORT_STATUS.md). The latest dedicated-server gate passes; the client gate is still failing. The 1.21.1 evidence below does not qualify this backport.
+
 # RingWorld
 
 RingWorld turns Minecraft's Overworld into a finite world that genuinely

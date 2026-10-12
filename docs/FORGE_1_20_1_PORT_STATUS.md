@@ -1,19 +1,40 @@
 # Forge 1.20.1 backport status
 
-This branch is experimental and must not be distributed as a playable mod yet.
+## Current checkpoint — 2026-10-12
 
-## Build gate
+This is an unofficial, experimental Forge 47.4.10 / Minecraft 1.20.1 backport,
+using Java 17. It is not a finished or visually qualified release.
 
-The first GitHub Actions compile attempt failed during Gradle dependency verification, before any Java sources were compiled. The existing verification metadata belongs to the 1.21.1 dependency graph and needs independently checked SHA-256 entries for new ForgeGradle transitive metadata. Preserve strict dependency verification rather than disabling it.
+At commit `26dce48`, Actions run `38281886797`, attempt 2, passed the JAR
+build/content checks, periodic chunk arithmetic and dedicated-server startup
+with the Overworld (61,440 × 2,000), Nether (30,720 × 2,000) and End
+(61,440 × 2,000) profiles. The client smoke gate failed. The cause has not yet
+been recovered from its logs; do not describe this checkpoint as client-ready.
 
-## Remaining work
+The latest source includes a fixed-Y=71 road with mountain tunnels, client
+terrain-atlas interpolation and distant-ring visual changes. Automatic custom
+cities, pyramids and monuments are outside the user's current requested scope.
+The distant view still uses synthetic fallback for terrain not sampled by the
+client; it is not a complete server-derived atlas.
 
-- Compile with Forge 47.x on Java 17, correcting mappings and API differences from Minecraft 1.21.1.
-- Port the common world generator, network protocol, entity seam crossing, chunk generation, world saves, and client render hooks.
-- Add server/client integration tests for continuous X wrapping, multiplayer, Nether and End, and boundary containment.
-- Add the requested 61,440-by-2,000 / 30,720-by-2,000 / 61,440-by-2,000 layouts and terrain/structures only after the core is stable.
-- Validate a built JAR in a clean Forge 1.20.1 client and dedicated server before declaring readiness.
+## Diagnostic workflow
 
-## Geometry constraint discovered
+The client smoke retains its required startup markers, 90-second observation
+window and fatal-error checks. Its console, client logs and crash reports are
+now included in the diagnostic artifact even when the smoke fails. Pipeline
+exit handling preserves the Gradle/timeout status rather than the tee status.
+These files distinguish missing runtime preparation, Mixin failures and shader
+failures without converting an unsuccessful launch into a pass.
 
-The existing RingGeometry requires widthBlocks to be divisible by 16, whereas the requested width is exactly 2,000 blocks. This must be addressed deliberately (including partial edge chunks) before shipping. The requested circumferences 61,440 and 30,720 are divisible by 16.
+The CI diagnostic build currently disables dependency verification explicitly.
+The original 1.21.1 dependency inventory does not qualify the Forge graph;
+independently reviewed Forge dependency pins remain a release requirement.
+
+## Remaining validation
+
+- Diagnose and correct the failed client smoke, then rerun it on the exact JAR.
+- Inspect real in-world upward views, terrain/atlas handoff, both rims and seam
+  movement; menu/bootstrap checks do not establish visual correctness.
+- Verify all-dimension portal/seam behavior and save/reconnect.
+- Validate TacZ and Embeddium separately; compatibility is not established.
+- Retain exact build/source identity and MPL-2.0 notices with test deliveries.

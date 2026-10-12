@@ -158,8 +158,8 @@ jobs:
           rm -rf forge1201/run-client/logs forge1201/run-client/crash-reports
           mkdir -p forge1201/run-client
           set +e
-          timeout 90s xvfb-run -a ./gradlew :forge1201:runClient -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
-          status=$?
+          timeout 90s xvfb-run -a ./gradlew :forge1201:runClient -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon 2>&1 | tee forge1201/run-client/console.log
+          status=${PIPESTATUS[0]}
           set -e
           LOG=forge1201/run-client/logs/latest.log
           if [[ "$status" -eq 124 ]] && [[ -f "$LOG" ]] \
@@ -190,4 +190,7 @@ jobs:
             forge1201/build/libs/*.jar
             forge1201/run-server/world
             forge1201/run-server/logs/latest.log
+            forge1201/run-client/console.log
+            forge1201/run-client/logs/
+            forge1201/run-client/crash-reports/
           if-no-files-found: warn

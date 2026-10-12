@@ -1,5 +1,12 @@
 # RingWorld agent guide
 
+Forge 1.20.1 branch checkpoint (2026-10-12): consult
+`docs/FORGE_1_20_1_PORT_STATUS.md` before applying older loader evidence below.
+Keep failed client console/log/crash artifacts and preserve the original process
+status when capturing pipeline output. Dedicated startup is not client or visual
+qualification. This fork intentionally uses RingWorld profiles in all three
+dimensions per the owner request.
+
 This file is the first-stop operating guide for coding agents working in this
 repository. Read it before changing topology, networking, world generation, or
 rendering. Detailed design documents live under [`docs/`](docs/README.md).
