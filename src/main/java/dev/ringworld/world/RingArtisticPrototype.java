@@ -18,69 +18,66 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 public final class RingArtisticPrototype {
     private static final int ROAD_CENTER_Z = 0;
     private static final int ROAD_HALF_WIDTH = 3;
-    private static final int ROAD_LIGHT_SPACING = 12;
-    private static final int ROAD_HEADROOM = 4;
+
+    /**
+     * The main route is intentionally artificial: it stays perfectly level all
+     * the way around the ring instead of following hills and valleys. At Y=71 it
+     * sits a few blocks above the nominal sea/surface reference while still
+     * cutting clean tunnels through mountains.
+     */
+    private static final int ROAD_Y = 71;
+    private static final int ROAD_LIGHT_SPACING = 3;
+    private static final int ROAD_HEADROOM = 5;
 
     private RingArtisticPrototype() { }
 
     public static void decorate(WorldGenLevel world, ChunkAccess chunk, RingGeometry geometry) {
         if (world.getLevel().dimension() != Level.OVERWORLD) return;
         if (RingGenerationBoundary.isExterior(chunk, geometry)) return;
-        buildTerrainFollowingRoad(chunk, geometry);
+        buildLevelRoad(chunk, geometry);
     }
 
     /**
-     * Builds a seven-block-wide causeway whose profile is always at or above
-     * the natural surface. A local one-block-per-block slope envelope raises
-     * low points around steep peaks instead of burying the road inside them.
+     * Builds a seven-block-wide, globally level causeway.
+     *
+     * <p>Low terrain receives a solid stone-brick support up to the road. High
+     * terrain is cut through instead: the pavement is forced to {@link #ROAD_Y}
+     * and five complete air blocks are cleared above it. This produces a true
+     * straight tunnel through mountains rather than making the road climb over
+     * them.</p>
      */
-    private static void buildTerrainFollowingRoad(ChunkAccess chunk, RingGeometry geometry) {
+    private static void buildLevelRoad(ChunkAccess chunk, RingGeometry geometry) {
         int chunkMinZ = chunk.getPos().getMinBlockZ();
         int chunkMaxZ = chunk.getPos().getMaxBlockZ();
         int firstRoadZ = Math.max(chunkMinZ, ROAD_CENTER_Z - ROAD_HALF_WIDTH);
         int lastRoadZ = Math.min(chunkMaxZ, ROAD_CENTER_Z + ROAD_HALF_WIDTH);
         if (firstRoadZ > lastRoadZ) return;
 
+        int worldMinY = chunk.getMinBuildHeight();
+        int worldTopExclusive = worldMinY + chunk.getHeight();
+        int targetY = Math.max(worldMinY + 1,
+                Math.min(ROAD_Y, worldTopExclusive - ROAD_HEADROOM - 1));
         int chunkMinX = chunk.getPos().getMinBlockX();
-        int[] rawHeights = new int[16];
-        int[] roadHeights = new int[16];
-
-        for (int localX = 0; localX < 16; localX++) {
-            int worldX = chunkMinX + localX;
-            int highest = chunk.getMinBuildHeight() + 1;
-            for (int z = firstRoadZ; z <= lastRoadZ; z++) {
-                highest = Math.max(highest, findTravelSurfaceY(chunk, worldX, z));
-            }
-            rawHeights[localX] = highest;
-        }
-
-        // Smallest slope-1 profile that never drops below any sampled surface.
-        for (int x = 0; x < 16; x++) {
-            int target = rawHeights[x];
-            for (int sample = 0; sample < 16; sample++) {
-                target = Math.max(target, rawHeights[sample] - Math.abs(sample - x));
-            }
-            roadHeights[x] = target;
-        }
-
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int worldTopExclusive = chunk.getMinBuildHeight() + chunk.getHeight();
+
         for (int localX = 0; localX < 16; localX++) {
             int worldX = chunkMinX + localX;
-            int targetY = Math.min(roadHeights[localX], worldTopExclusive - ROAD_HEADROOM - 1);
 
             for (int z = firstRoadZ; z <= lastRoadZ; z++) {
                 int naturalY = findTravelSurfaceY(chunk, worldX, z);
 
-                // Raised sections become a solid engineered causeway rather than floating blocks.
-                for (int y = naturalY + 1; y < targetY; y++) {
-                    setBlock(chunk, pos.set(worldX, y, z), Blocks.STONE_BRICKS.defaultBlockState());
+                // Valleys and water become an engineered causeway with a solid support.
+                if (naturalY < targetY) {
+                    for (int y = naturalY + 1; y < targetY; y++) {
+                        setBlock(chunk, pos.set(worldX, y, z),
+                                Blocks.STONE_BRICKS.defaultBlockState());
+                    }
                 }
 
-                BlockState pavement = pavementFor(worldX, z);
-                setBlock(chunk, pos.set(worldX, targetY, z), pavement);
+                // Mountains are not followed: the road stays at one global Y level.
+                setBlock(chunk, pos.set(worldX, targetY, z), pavementFor(worldX, z));
 
-                // Nothing can cover the road after this pass; trees/terrain get clear headroom.
+                // Five full blocks of headroom make every mountain crossing a clean tunnel.
                 for (int y = targetY + 1;
                      y <= targetY + ROAD_HEADROOM && y < worldTopExclusive; y++) {
                     setBlock(chunk, pos.set(worldX, y, z), Blocks.AIR.defaultBlockState());
