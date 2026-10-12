@@ -18,8 +18,8 @@ bootstrap evidence, not an in-world visual or packaged-client qualification.
 The latest source includes a fixed-Y=71 road with mountain tunnels, client
 terrain-atlas interpolation and distant-ring visual changes. Automatic custom
 cities, pyramids and monuments are outside the user's current requested scope.
-The distant view still uses synthetic fallback for terrain not sampled by the
-client; it is not a complete server-derived atlas.
+Alpha 2 retains observed client terrain and shows an explicitly low-detail
+silhouette for unsampled areas; it is not a complete server-derived atlas.
 
 ## Diagnostic workflow
 
@@ -43,7 +43,7 @@ independently reviewed Forge dependency pins remain a release requirement.
 - Validate TacZ and Embeddium separately; compatibility is not established.
 - Retain exact build/source identity and MPL-2.0 notices with test deliveries.
 
-## Alpha 2 rendering repair — pending runtime verification
+## Alpha 2 rendering repair — limited in-world verification complete
 
 User screenshots show the sky-scale proxy detached from live terrain and
 invisible finite-band edges. The Forge adapter now uses the shared physical
@@ -81,3 +81,20 @@ at most two repairs per tick, with unload cleanup. The updated visual fixture
 uses a road-tunnel camera and an above-terrain camera, requires server teleport
 completion plus actual client position/orientation, and records a server stack
 on arrival timeout. Clean shutdown remains required. Runtime recheck pending.
+
+### Verified alpha-2 test delivery
+
+Runtime/source commit `a8fca8dfcc5fb9670e7e0f477855436b58791913`,
+Actions run `38298445431`, passed build/content, periodic arithmetic, server
+and client bootstrap, all four position-verified screenshots, and clean
+integrated-server save/shutdown. The rim transfer completed at Z=-980; the
+seam target X=61430 appeared in the nearest client chart at X=-10.
+
+Manual inspection confirms the road design, a visible physical bedrock rim,
+and a coherent ring silhouette using the same radius as the live terrain.
+The upward/seam images also clearly expose the remaining limitation: unknown
+atlas regions are plain pale surfaces, and the known-to-unknown boundary can
+still look soft/obvious. This is not complete distant-map fidelity, natural
+walking/seam qualification, multiplayer qualification, or renderer-mod
+compatibility qualification. No percentage improvement or FPS gain is claimed.
+The four screenshots are included in the test package.

@@ -1377,3 +1377,12 @@ Visual fixtures must verify server acknowledgement and actual client camera
 arrival. The first alpha-2 camera at Y=92 was inside stone (surface Y=125),
 and repeated screenshots after unverified teleports are not rim/seam evidence.
 Run 38296473785 passed build/bootstrap but failed clean visual completion.
+
+### Forge alpha-2 verified checkpoint
+
+Commit a8fca8dfcc5fb9670e7e0f477855436b58791913 / run 38298445431 passes
+all diagnostic gates and clean integrated-server shutdown. Four captures verify
+actual camera arrival; rim Z=-980 is visible and seam X=61430 projects to X=-10.
+Manual review confirms the unchanged road and visible rim, but far unknown
+areas remain a pale silhouette. Do not call this a complete atlas, movement or
+multiplayer qualification, or claim compatibility with Embeddium/Oculus.
