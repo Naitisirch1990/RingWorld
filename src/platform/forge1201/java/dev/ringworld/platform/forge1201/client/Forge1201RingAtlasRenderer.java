@@ -56,27 +56,48 @@ public final class Forge1201RingAtlasRenderer {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.level.dimension() != Level.OVERWORLD) return;
         RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
-        if (geometry == null) return;
+        if (!isRenderableGeometry(geometry)) return;
 
         Vec3 camera = event.getCamera().getPosition();
+        if (!isFinite(camera)) return;
         Matrix4f pose = event.getPoseStack().last().pose();
 
+        // The atlas shares Minecraft's global RenderSystem state. Keep every state change
+        // tightly scoped so a failed/aborted atlas frame cannot tint or corrupt later terrain.
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(false);
         RenderSystem.disableCull();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
-        BufferBuilder builder = Tesselator.getInstance().getBuilder();
-        builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        drawSurface(builder, pose, geometry, camera);
-        drawSideWalls(builder, pose, geometry, camera);
-        BufferUploader.drawWithShader(builder.end());
+        try {
+            BufferBuilder builder = Tesselator.getInstance().getBuilder();
+            builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+            drawSurface(builder, pose, geometry, camera);
+            drawSideWalls(builder, pose, geometry, camera);
+            BufferUploader.drawWithShader(builder.end());
+        } finally {
+            // Terrain, entities and translucent passes render after this event. Always return
+            // the shared renderer to a neutral state even if atlas tessellation throws.
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableCull();
+            RenderSystem.disableBlend();
+        }
+    }
 
-        RenderSystem.depthMask(true);
-        RenderSystem.enableCull();
-        RenderSystem.disableBlend();
+    private static boolean isRenderableGeometry(RingGeometry geometry) {
+        return geometry != null
+                && geometry.circumferenceBlocks() > 0
+                && geometry.minWidthZ() <= geometry.maxWidthZ();
+    }
+
+    private static boolean isFinite(Vec3 position) {
+        return Double.isFinite(position.x)
+                && Double.isFinite(position.y)
+                && Double.isFinite(position.z);
     }
 
     private static void drawSurface(BufferBuilder builder, Matrix4f pose,
