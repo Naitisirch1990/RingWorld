@@ -164,7 +164,14 @@ public final class Forge1201AtlasServer {
             if(complete) continue;
             s.request=new ChunkPos(cx,cz);
             level.getChunkSource().addRegionTicket(TICKET,s.request,0,s.request);
-            s.future=level.getChunkSource().getChunkFuture(cx,cz,ChunkStatus.FULL,true);
+            try {
+                s.future=((dev.ringworld.platform.forge1201.mixin.Forge1201AtlasChunkAccess)level.getChunkSource())
+                        .ringworld$atlasFuture(cx,cz,ChunkStatus.FULL,true);
+            } catch(RuntimeException error) {
+                level.getChunkSource().removeRegionTicket(TICKET,s.request,0,s.request);
+                s.request=null; s.running=false;
+                RingWorldMod.LOGGER.error("Atlas generation paused after scheduling failure",error);
+            }
             break;
         }
     }

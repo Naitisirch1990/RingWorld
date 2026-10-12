@@ -25,7 +25,8 @@
     "Forge1201EntityPortalScaleMixin",
     "Forge1201ServerGamePacketListenerMixin",
     "Forge1201EntityDistanceMixin",
-    "Forge1201ProjectileUtilMixin"
+    "Forge1201ProjectileUtilMixin",
+    "Forge1201AtlasChunkAccess"
   ],
   "client": [
     "Forge1201ClientChunkStorageMixin",
