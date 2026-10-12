@@ -27,23 +27,24 @@ const float TAU = 6.28318530717958647692;
 
 vec3 ringPosition(vec3 localFlat) {
     float circumference = float(RingWorldLayout.y);
-    float radius = circumference / TAU;
+    float gain = max(1.0, min(8.0, circumference / TAU / 512.0));
+    float radius = circumference / TAU / gain;
     float intrinsicAngle = TAU * localFlat.x / circumference;
-    // Match RingGeometry.tangentFrameAngle: stronger bend near each view while
-    // preserving exactly 2π after one circumference (no far-side seam).
-    float angle = intrinsicAngle + 0.65 * sin(intrinsicAngle);
+    // Match Forge1201CurvedProjection and the atlas shader, including local block scale.
+    float angle = 2.0 * atan(gain * sin(intrinsicAngle * .5), cos(intrinsicAngle * .5));
     float vertexRadius = radius + RingWorldVertical.x - (RingWorldCamera.y + localFlat.y);
     float cameraRadius = radius + RingWorldVertical.x - RingWorldCamera.y;
     return vec3(
         vertexRadius * sin(angle),
         cameraRadius - vertexRadius * cos(angle),
-        localFlat.z
+        localFlat.z * mix(1.0, min(1.0, 2.0/gain), pow(sin(angle*.5), 2.0))
     );
 }
 
 vec3 ringNormal(vec3 sourceNormal, float localX) {
     float intrinsicAngle = TAU * localX / float(RingWorldLayout.y);
-    float angle = intrinsicAngle + 0.65 * sin(intrinsicAngle);
+    float gain = max(1.0, min(8.0, float(RingWorldLayout.y) / TAU / 512.0));
+    float angle = 2.0 * atan(gain * sin(intrinsicAngle * .5), cos(intrinsicAngle * .5));
     float c = cos(angle);
     float s = sin(angle);
     return vec3(

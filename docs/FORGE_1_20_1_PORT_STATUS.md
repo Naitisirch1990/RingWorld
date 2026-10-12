@@ -137,3 +137,26 @@ checkpoint, not a complete-map fix or a release candidate. No external shader
 pack is required; an atlas server/persistence/synchronization port is the
 remaining work for real far-side topography.
 
+
+## Alpha 4 work in progress — not yet visually qualified
+
+The alpha-3 description of the fade was incorrect: its smoothstep is a near
+handoff ramp, not a far cutoff. Using C/2 hides the proxy until many kilometres
+away. Alpha 4 restores a render-distance-based handoff and replaces the
+client-observation-only pale roof with server-owned, persisted real chunk
+samples and an ordered, bounded tile stream. Generated player constructions
+are recaptured, including edits outside block placement events. No synthetic
+mountains or white unknown-data surface are drawn. Full coverage requires
+progressive generation of the large map; /ringworld atlas status/pause/resume
+exposes progress. Only the Overworld distant atlas is implemented here.
+
+The GPU caches real eight-block cells, including vertical discontinuities.
+The visual projection reduces the displayed radius with a periodic angular
+map that preserves local block scale. The far width scale is chosen to double
+the apparent opposite-band width for the 61,440-block project circumference.
+This is a presentation transform, not a change to saved world dimensions or
+the road. CPU bounds, live terrain and atlas shaders must remain matched.
+
+The disposable fixture adds an actual red far-side construction, checks its
+server atlas height, round-trip persistence and received client height, then
+captures a fifth view. Build, runtime, images and performance remain pending.

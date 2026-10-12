@@ -6,21 +6,25 @@ import net.minecraft.world.phys.Vec3;
 
 /** Forge renderer-only curvature profile; canonical world coordinates stay unchanged. */
 public final class Forge1201CurvedProjection {
-    public static final double CURVATURE_GAIN = 0.65;
+    public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(8, geometry.radius() / 512.0)); }
+    public static double radiusAt(RingGeometry geometry, double y) { return geometry.radius() / gain(geometry) + geometry.surfaceReferenceY() - y; }
+    private static double widthScale(RingGeometry geometry, double a) {
+        return 1 + (Math.min(1, 2 / gain(geometry)) - 1) * Math.pow(Math.sin(a * .5), 2);
+    }
     private Forge1201CurvedProjection() { }
 
     public static double angle(RingGeometry geometry, double cameraX, double x) {
         double intrinsic = Math.PI * 2.0 * geometry.shortestCircumferenceDelta(cameraX, x)
                 / geometry.circumferenceBlocks();
-        return visualAngle(intrinsic);
+        return visualAngle(intrinsic, gain(geometry));
     }
 
     public static Vec3 toCameraLocal(RingGeometry geometry, Vec3 point, Vec3 camera) {
         double angle = angle(geometry, camera.x, point.x);
-        double radius = geometry.physicalRadiusAt(point.y);
-        double cameraRadius = geometry.physicalRadiusAt(camera.y);
+        double radius = radiusAt(geometry, point.y);
+        double cameraRadius = radiusAt(geometry, camera.y);
         return new Vec3(radius * Math.sin(angle), cameraRadius - radius * Math.cos(angle),
-                point.z - camera.z);
+                (point.z - camera.z) * widthScale(geometry, angle));
     }
 
     public static AABB toCameraLocalBounds(RingGeometry geometry, AABB bounds, Vec3 camera) {
@@ -29,7 +33,7 @@ public final class Forge1201CurvedProjection {
                 / geometry.circumferenceBlocks();
         double end = start + Math.PI * 2.0 * (bounds.maxX - bounds.minX)
                 / geometry.circumferenceBlocks();
-        double minAngle = visualAngle(start), maxAngle = visualAngle(end);
+        double minAngle = visualAngle(start, gain(geometry)), maxAngle = visualAngle(end, gain(geometry));
         double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
         int firstCardinal = (int)Math.ceil(minAngle / (Math.PI / 2.0));
@@ -41,30 +45,24 @@ public final class Forge1201CurvedProjection {
             else if (i == 1) a = maxAngle;
             else {
                 double target = (firstCardinal + i - 2) * (Math.PI / 2.0);
-                a = visualAngle(invert(target, start, end));
+                a = target;
             }
             for (double y : new double[]{bounds.minY, bounds.maxY}) {
-                double radius = geometry.physicalRadiusAt(y);
+                double radius = radiusAt(geometry, y);
                 double x = radius * Math.sin(a);
-                double vertical = geometry.physicalRadiusAt(camera.y) - radius * Math.cos(a);
+                double vertical = radiusAt(geometry, camera.y) - radius * Math.cos(a);
                 minX = Math.min(minX, x); maxX = Math.max(maxX, x);
                 minY = Math.min(minY, vertical); maxY = Math.max(maxY, vertical);
             }
         }
-        return new AABB(minX, minY, bounds.minZ - camera.z,
-                maxX, maxY, bounds.maxZ - camera.z);
+        double z0 = bounds.minZ - camera.z, z1 = bounds.maxZ - camera.z;
+        double factor = Math.min(1, 2 / gain(geometry));
+        return new AABB(minX, minY, Math.min(z0, z0 * factor),
+                maxX, maxY, Math.max(z1, z1 * factor));
     }
 
-    private static double visualAngle(double angle) {
-        return angle + CURVATURE_GAIN * Math.sin(angle);
-    }
-
-    private static double invert(double target, double low, double high) {
-        for (int i = 0; i < 48; i++) {
-            double middle = (low + high) * 0.5;
-            if (visualAngle(middle) < target) low = middle;
-            else high = middle;
-        }
-        return (low + high) * 0.5;
+    private static double visualAngle(double angle, double gain) {
+        // Monotone, periodic angular magnification. radius/gain preserves local block scale.
+        return 2 * Math.atan2(gain * Math.sin(angle * .5), Math.cos(angle * .5));
     }
 }

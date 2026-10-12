@@ -191,7 +191,8 @@ jobs:
           set -e
           [[ "$status" -eq 0 ]]
           grep -q '\[forge-visual\] CAPTURE_PASS' forge1201/run-visual/logs/latest.log
-          for view in 01-road 02-up 03-rim 04-seam; do
+          grep -q ATLAS_PERSIST_PASS forge1201/run-visual/logs/latest.log
+          for view in 01-road 02-up 03-rim 04-seam 05-far-build; do
             test -s "forge1201/run-visual/screenshots/$view.png"
           done
 

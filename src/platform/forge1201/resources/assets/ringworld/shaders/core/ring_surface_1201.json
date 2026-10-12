@@ -63,6 +63,28 @@
         1,
         1
       ]
+    },
+    {
+      "name": "RingCamera",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "RingLayout",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
     }
   ]
 }

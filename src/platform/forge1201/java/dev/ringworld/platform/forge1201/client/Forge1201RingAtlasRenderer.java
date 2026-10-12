@@ -1,108 +1,82 @@
 package dev.ringworld.platform.forge1201.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.*;
 import dev.ringworld.RingWorldMod;
-import dev.ringworld.platform.forge1201.Forge1201ClientTopology;
-import dev.ringworld.world.RingGeometry;
+import dev.ringworld.platform.forge1201.Forge1201ClientAtlasState;
+import dev.ringworld.world.RingTerrainAtlas;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
+import java.util.HashMap;
+import java.util.Map;
 
-/** Distant surface in exactly the same physical cylinder as live terrain.
- * No miniature sky cylinder, exaggerated relief or synthetic biome ribbons.
- */
+/** Real, persisted surface cells, cached on the GPU. Unknown cells never become a white roof. */
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class Forge1201RingAtlasRenderer {
-    private Forge1201RingAtlasRenderer() { }
-    @SubscribeEvent
-    public static void renderRingAtlas(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_SKY) return;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.level.dimension() != Level.OVERWORLD
-                || Forge1201RingShaders.surface() == null) return;
-        RingGeometry geometry = Forge1201ClientTopology.activeGeometry();
-        if (geometry == null) return;
-        Forge1201RingTerrainAtlas.refreshLoadedTerrain(mc.level, geometry);
-        Vec3 camera = event.getCamera().getPosition();
-        Matrix4f pose = event.getPoseStack().last().pose();
-        // The atlas replaces terrain beyond vanilla's chunk draw distance.
-        // Tying its fade to render distance made it vanish around seven chunks,
-        // even though this curved mesh spans the full ring.
-        double view = geometry.circumferenceBlocks() * 0.5;
-        RenderSystem.enableDepthTest(); RenderSystem.depthMask(false);
+    private static RingTerrainAtlas cached;
+    private static final Map<Integer,VertexBuffer> meshes=new HashMap<>();
+    private static void clear() { for(var v:meshes.values()) v.close(); meshes.clear(); cached=null; }
+    @SubscribeEvent public static void logout(ClientPlayerNetworkEvent.LoggingOut e) { clear(); }
+    @SubscribeEvent public static void renderRingAtlas(RenderLevelStageEvent event) {
+        if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_SKY) return;
+        var mc=Minecraft.getInstance(); var atlas=Forge1201ClientAtlasState.atlas();
+        if(mc.level==null || mc.level.dimension()!=Level.OVERWORLD || Forge1201RingShaders.surface()==null) return;
+        if(cached!=atlas) { clear(); cached=atlas; }
+        if(atlas==null) return;
+        // Coalesce streamed changes, rebuilding at most one 1024-block strip each frame.
+        int dirty=Forge1201ClientAtlasState.nextDirty();
+        if(dirty>=0) rebuild(atlas,dirty);
+        var camera=event.getCamera().getPosition(); var g=atlas.geometry();
+        var shader=Forge1201RingShaders.surface();
+        shader.safeGetUniform("RingCamera").set((float)camera.x,(float)camera.y,(float)camera.z,
+                (float)(mc.options.getEffectiveRenderDistance()*16));
+        shader.safeGetUniform("RingLayout").set((float)g.circumferenceBlocks(),(float)g.surfaceReferenceY(),0f,0f);
+        RenderSystem.enableDepthTest(); RenderSystem.depthMask(true);
         RenderSystem.disableCull(); RenderSystem.enableBlend(); RenderSystem.defaultBlendFunc();
-        RenderSystem.setShaderColor(1, 1, 1, 1);
-        RenderSystem.setShader(Forge1201RingShaders::surface);
+        RenderSystem.setShaderColor(1,1,1,1);
         try {
-            BufferBuilder b = Tesselator.getInstance().getBuilder();
-            b.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            for (int sign : new int[]{-1, 1}) {
-                double half = geometry.circumferenceBlocks() * 0.5;
-                for (double d = 0; d < half;) {
-                    double step = d < 512 ? 16 : d < 2048 ? 64 : 128;
-                    double next = Math.min(half, d + step);
-                    double x0 = camera.x + sign * d, x1 = camera.x + sign * next;
-                    for (double z = geometry.minWidthZ(); z < geometry.maxWidthZ() + 1;) {
-                        double zStep = d < 512 && Math.abs(z - camera.z) < 512 ? 16 : 64;
-                        double z1 = Math.min(geometry.maxWidthZ() + 1, z + zStep);
-                        surfaceVertex(b, pose, geometry, camera, x0, z, view);
-                        surfaceVertex(b, pose, geometry, camera, x1, z, view);
-                        surfaceVertex(b, pose, geometry, camera, x1, z1, view);
-                        surfaceVertex(b, pose, geometry, camera, x0, z1, view);
-                        z = z1;
-                    }
-                    // Double the apparent fascia from 5 to 10 blocks by placing
-                    // its inner face five blocks farther into the ring.
-                    for (double edge : new double[]{geometry.minWidthZ() + 10, geometry.maxWidthZ() - 9}) {
-                        double base0 = Forge1201RingTerrainAtlas.sample(x0, edge, geometry).height();
-                        double base1 = Forge1201RingTerrainAtlas.sample(x1, edge, geometry).height();
-                        wallVertex(b, pose, geometry, camera, x0, base0, edge, view);
-                        wallVertex(b, pose, geometry, camera, x1, base1, edge, view);
-                        wallVertex(b, pose, geometry, camera, x1, base1 + 10, edge, view);
-                        wallVertex(b, pose, geometry, camera, x0, base0 + 10, edge, view);
-                    }
-                    d = next;
-                }
-            }
-            BufferUploader.drawWithShader(b.end());
-        } finally {
-            RenderSystem.setShaderColor(1, 1, 1, 1); RenderSystem.depthMask(true);
-            RenderSystem.enableCull(); RenderSystem.disableBlend();
+            Matrix4f pose=event.getPoseStack().last().pose();
+            for(var mesh:meshes.values()) { mesh.bind(); mesh.drawWithShader(pose,event.getProjectionMatrix(),shader); }
+        } finally { VertexBuffer.unbind(); RenderSystem.depthMask(true); RenderSystem.enableCull(); RenderSystem.disableBlend(); }
+    }
+    private static void rebuild(RingTerrainAtlas atlas,int group) {
+        var old=meshes.remove(group); if(old!=null) old.close();
+        var b=Tesselator.getInstance().getBuilder(); b.begin(VertexFormat.Mode.QUADS,DefaultVertexFormat.POSITION_COLOR);
+        int count=0; var g=atlas.geometry();
+        int end=Math.min(atlas.columns(),(group+1)*128);
+        for(int x=group*128;x<end;x++) for(int z=0;z<atlas.rows();z++) {
+            if(!atlas.hasCell(x,z)) continue;
+            int rgb=atlas.cellColor(x,z); double y=atlas.cellHeight(x,z);
+            double x0=x*8, x1=x0+8,z0=g.minWidthZ()+z*8,z1=Math.min(g.maxWidthZ()+1,z0+8);
+            // Eight-block real samples retain large player builds; no 128-block far-side decimation.
+            quad(b,x0,y,z0,x1,y,z0,x1,y,z1,x0,y,z1,rgb,1);
+            // Vertical faces make cliffs and constructed towers legible from a tangent view.
+            if(atlas.hasCell(x+1,z) && atlas.cellHeight(Math.floorMod(x+1,atlas.columns()),z)<y)
+                quad(b,x1,y,z0,x1,atlas.cellHeight(Math.floorMod(x+1,atlas.columns()),z),z0,
+                        x1,atlas.cellHeight(Math.floorMod(x+1,atlas.columns()),z),z1,x1,y,z1,rgb,.72);
+            if(atlas.hasCell(x-1,z) && atlas.cellHeight(Math.floorMod(x-1,atlas.columns()),z)<y)
+                quad(b,x0,y,z1,x0,atlas.cellHeight(Math.floorMod(x-1,atlas.columns()),z),z1,
+                        x0,atlas.cellHeight(Math.floorMod(x-1,atlas.columns()),z),z0,x0,y,z0,rgb,.72);
+            if(z>0 && atlas.hasCell(x,z-1) && atlas.cellHeight(x,z-1)<y)
+                quad(b,x0,y,z0,x0,atlas.cellHeight(x,z-1),z0,x1,atlas.cellHeight(x,z-1),z0,x1,y,z0,rgb,.85);
+            if(z+1<atlas.rows() && atlas.hasCell(x,z+1) && atlas.cellHeight(x,z+1)<y)
+                quad(b,x1,y,z1,x1,atlas.cellHeight(x,z+1),z1,x0,atlas.cellHeight(x,z+1),z1,x0,y,z1,rgb,.85);
+            count++;
         }
+        var built=b.end();
+        if(count==0) { built.release(); return; }
+        var mesh=new VertexBuffer(VertexBuffer.Usage.STATIC); mesh.bind(); mesh.upload(built); VertexBuffer.unbind(); meshes.put(group,mesh);
     }
-    private static void surfaceVertex(BufferBuilder b, Matrix4f pose, RingGeometry geometry,
-                                      Vec3 camera, double x, double z, double view) {
-        Forge1201RingTerrainAtlas.Sample sample = Forge1201RingTerrainAtlas.sample(x, z, geometry);
-        int rgb = sample.color();
-        // Unknown areas remain a pale, low-detail silhouette, explicitly distinct from real data.
-        double haze = (1 - sample.confidence()) * 0.68;
-        int r = (int)(((rgb >> 16) & 255) * (1 - haze) + 180 * haze);
-        int g = (int)(((rgb >> 8) & 255) * (1 - haze) + 200 * haze);
-        int blue = (int)((rgb & 255) * (1 - haze) + 212 * haze);
-        vertex(b, pose, geometry, camera, x, sample.height(), z, (r << 16) | (g << 8) | blue, view);
-    }
-    private static void wallVertex(BufferBuilder b, Matrix4f pose, RingGeometry geometry,
-                                   Vec3 camera, double x, double y, double z, double view) {
-        vertex(b, pose, geometry, camera, x, y, z, 0x52545A, view);
-    }
-    private static void vertex(BufferBuilder b, Matrix4f pose, RingGeometry geometry, Vec3 camera,
-                                double x, double y, double z, int rgb, double view) {
-        Vec3 p = Forge1201CurvedProjection.toCameraLocal(geometry, new Vec3(x, y, z), camera);
-        double dx = geometry.shortestCircumferenceDelta(camera.x, x);
-        double distance = Math.sqrt(dx * dx + (z - camera.z) * (z - camera.z));
-        double t = Math.max(0, Math.min(1, (distance - view * 0.55) / (view * 0.35)));
-        int alpha = (int)Math.round(255 * t * t * (3 - 2 * t));
-        b.vertex(pose, (float)p.x, (float)p.y, (float)p.z)
-                .color((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, alpha).endVertex();
+    private static void quad(BufferBuilder b,double x0,double y0,double z0,double x1,double y1,double z1,
+                             double x2,double y2,double z2,double x3,double y3,double z3,int rgb,double shade) {
+        int r=(int)(((rgb>>16)&255)*shade),g=(int)(((rgb>>8)&255)*shade),blue=(int)((rgb&255)*shade);
+        b.vertex(x0,y0,z0).color(r,g,blue,255).endVertex(); b.vertex(x1,y1,z1).color(r,g,blue,255).endVertex();
+        b.vertex(x2,y2,z2).color(r,g,blue,255).endVertex(); b.vertex(x3,y3,z3).color(r,g,blue,255).endVertex();
     }
 }

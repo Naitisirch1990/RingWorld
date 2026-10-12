@@ -10,7 +10,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 /** Forge 1.20.1 wire adapter for the three RingWorld dimension profiles. */
 public final class Forge1201RingNetwork {
-    private static final String PROTOCOL = "ringworld-settings-v4-forge1201";
+    private static final String PROTOCOL = "ringworld-atlas-v5-forge1201";
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(RingWorldMod.MOD_ID, "settings"),
             () -> PROTOCOL,
@@ -28,8 +28,15 @@ public final class Forge1201RingNetwork {
                 Forge1201SettingsPacket::encode,
                 Forge1201SettingsPacket::decode,
                 Forge1201SettingsPacket::handle);
+        CHANNEL.registerMessage(1, Forge1201AtlasPacket.class, Forge1201AtlasPacket::encode,
+                Forge1201AtlasPacket::decode, Forge1201AtlasPacket::handle,
+                java.util.Optional.of(net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT));
         registered = true;
         RingWorldMod.LOGGER.info("Registered Forge 1.20.1 RingWorld settings channel {}", PROTOCOL);
+    }
+
+    public static void sendAtlas(ServerPlayer player, Forge1201AtlasPacket packet) {
+        register(); CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 
     public static void sendSettings(ServerPlayer player, RingWorldSettings settings) {

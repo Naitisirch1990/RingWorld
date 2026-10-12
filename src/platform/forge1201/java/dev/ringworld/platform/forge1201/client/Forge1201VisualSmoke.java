@@ -16,9 +16,9 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = RingWorldMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class Forge1201VisualSmoke {
     private static final boolean ENABLED = Boolean.getBoolean("ringworld.visualSmoke");
-    private static final String[] NAMES = {"01-road", "02-up", "03-rim", "04-seam"};
+    private static final String[] NAMES = {"01-road", "02-up", "03-rim", "04-seam", "05-far-build"};
     private static final double[][] VIEWS = {{80,73,0,-90,0},{80,200,0,-90,-65},
-            {80,105,-980,180,35},{61430,200,0,-90,20}};
+            {80,105,-980,180,35},{61430,200,0,-90,20},{80,200,0,-90,-90}};
     private static int stage, frames;
     private static long started;
     private static boolean positioned, waiting;
@@ -44,6 +44,31 @@ public final class Forge1201VisualSmoke {
                 player.getAbilities().flying = true; player.onUpdateAbilities();
                 server.overworld().setDayTime(6000);
                 player.connection.teleport(view[0], view[1], view[2], (float)view[3], (float)view[4]);
+                if (stage == 4) {
+                    // Actual blocks only, on the opposite side of this disposable world.
+                    // Nothing here executes in ordinary play.
+                    var level = server.overworld();
+                    int center = 80 + dev.ringworld.platform.forge1201.Forge1201RingRuntime.geometryFor(level).circumferenceBlocks()/2;
+                    var pos = new net.minecraft.core.BlockPos.MutableBlockPos();
+                    for (int x=center-64;x<center+64;x++) for(int z=-64;z<64;z++) {
+                        var chunk=level.getChunk(x>>4,z>>4);
+                        chunk.setBlockState(pos.set(x,300,z),net.minecraft.world.level.block.Blocks.RED_CONCRETE.defaultBlockState(),false);
+                        if(Math.abs(x-center)<16 && Math.abs(z)<16)
+                            for(int y=180;y<300;y++) chunk.setBlockState(pos.set(x,y,z),net.minecraft.world.level.block.Blocks.RED_CONCRETE.defaultBlockState(),false);
+                    }
+                    for(int x=(center-64)>>4;x<=((center+63)>>4);x++) for(int z=-4;z<4;z++)
+                        dev.ringworld.platform.forge1201.Forge1201AtlasServer.capture(level,level.getChunk(x,z));
+                    var atlas=dev.ringworld.platform.forge1201.Forge1201AtlasServer.atlas(level);
+                    int column=center/8,row=(4-atlas.geometry().minWidthZ())/8;
+                    if(atlas.cellHeight(column,row)!=301) throw new IllegalStateException("Far build absent from server atlas");
+                    try {
+                        var file=level.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("ringworld/fixture-atlas.rwat.gz");
+                        atlas.save(file);
+                        var reopened=dev.ringworld.world.RingTerrainAtlas.load(file,atlas.geometry(),atlas.worldHash());
+                        if(reopened.cellHeight(column,row)!=301) throw new IllegalStateException("Far build lost after atlas reopen");
+                    } catch(java.io.IOException ex) { throw new IllegalStateException(ex); }
+                    RingWorldMod.LOGGER.info("[forge-visual] ATLAS_PERSIST_PASS actual far-side build at {}",center);
+                }
                 serverPositioned = true;
             });
             RingWorldMod.LOGGER.info("[forge-visual] preparing {}", NAMES[stage]);
@@ -76,6 +101,14 @@ public final class Forge1201VisualSmoke {
             arrived = System.nanoTime();
             RingWorldMod.LOGGER.info("[forge-visual] arrived {} position={}", NAMES[stage], mc.player.position());
         }
+        if (stage == 4) {
+            var atlas=dev.ringworld.platform.forge1201.Forge1201ClientAtlasState.atlas();
+            int center=80+geometry.circumferenceBlocks()/2;
+            if(atlas==null || atlas.cellHeight(center/8,(4-geometry.minWidthZ())/8)!=301) {
+                if(System.nanoTime()-started>90_000_000_000L) { failed=true; RingWorldMod.LOGGER.error("[forge-visual] FAIL far build not streamed"); mc.stop(); }
+                return;
+            }
+        }
         frames++;
         if (waiting || frames < 100 || System.nanoTime() - arrived < 15_000_000_000L) return;
         waiting = true;
@@ -89,7 +122,7 @@ public final class Forge1201VisualSmoke {
             RingWorldMod.LOGGER.info("[forge-visual] captured {}", name);
             stage++; positioned = false; waiting = false;
             if (stage == VIEWS.length) {
-                RingWorldMod.LOGGER.info("[forge-visual] CAPTURE_PASS four real-world views; visual review still required");
+                RingWorldMod.LOGGER.info("[forge-visual] CAPTURE_PASS five real-world views, actual far build synchronized and persisted; visual review still required");
                 mc.stop();
             }
         }));

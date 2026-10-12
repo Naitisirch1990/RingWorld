@@ -3,11 +3,24 @@ in vec3 Position;
 in vec4 Color;
 uniform mat4 ModelViewMat;
 uniform mat4 ProjMat;
+uniform vec4 RingCamera;
+uniform vec4 RingLayout;
 out vec4 vertexColor;
+out float handoff;
+const float TAU=6.28318530718;
 void main() {
-    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
-    // The full 61 km ring exceeds Minecraft's chunk-distance far plane.
-    // Clamp only its depth: preserve perspective and physical alignment.
-    if (gl_Position.w > 0.0) gl_Position.z = min(gl_Position.z, gl_Position.w * 0.9999);
-    vertexColor = Color;
+    float c=RingLayout.x;
+    float dx=mod(Position.x-RingCamera.x+c*.5,c)-c*.5;
+    float theta=TAU*dx/c;
+    float gain=max(1.0,min(8.0,c/TAU/512.0));
+    float angle=2.0*atan(gain*sin(theta*.5),cos(theta*.5));
+    float radius=c/TAU/gain;
+    float vr=radius+RingLayout.y-Position.y;
+    float cr=radius+RingLayout.y-RingCamera.y;
+    float widthScale=mix(1.0,min(1.0,2.0/gain),pow(sin(angle*.5),2.0));
+    vec3 p=vec3(vr*sin(angle),cr-vr*cos(angle),(Position.z-RingCamera.z)*widthScale);
+    gl_Position=ProjMat*ModelViewMat*vec4(p,1.0);
+    if(gl_Position.w>0.0) gl_Position.z=min(gl_Position.z,gl_Position.w*.9999);
+    handoff=smoothstep(RingCamera.w*.55,RingCamera.w*.85,length(vec2(dx,Position.z-RingCamera.z)));
+    vertexColor=Color;
 }

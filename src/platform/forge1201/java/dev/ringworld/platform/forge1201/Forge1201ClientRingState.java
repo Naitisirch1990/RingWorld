@@ -29,6 +29,7 @@ public final class Forge1201ClientRingState {
 
     public static void clear() {
         settings = null;
+        Forge1201ClientAtlasState.clear();
     }
 
     public enum Profile {
