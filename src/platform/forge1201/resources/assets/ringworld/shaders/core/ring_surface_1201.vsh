@@ -22,8 +22,8 @@ void main() {
     float radius=c/TAU/gain;
     float vr=radius+RingLayout.y-Position.y;
     float cr=radius+RingLayout.y-RingCamera.y;
-    float band=smoothstep(0.78539816339,2.67035375555,abs(angle));
-    float widthScale=1.0+band;
+    float t=clamp(abs(angle)/3.14159265359,0.0,1.0);
+    float widthScale=1.0+pow(t,4.0);
     vec3 p=vec3(vr*sin(angle),cr-vr*cos(angle),(Position.z-RingCamera.z)*widthScale);
     gl_Position=ProjMat*ModelViewMat*vec4(p,1.0);
     if(gl_Position.w>0.0) gl_Position.z=min(gl_Position.z,gl_Position.w*.9999);
