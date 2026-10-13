@@ -9,7 +9,7 @@ public final class Forge1201CurvedProjection {
     public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(16, geometry.radius() / 512.0)); }
     public static double radiusAt(RingGeometry geometry, double y) { return geometry.radius() / gain(geometry) + geometry.surfaceReferenceY() - y; }
     private static double widthScale(RingGeometry geometry, double a) {
-        return 1 + (Math.min(1, 2 / gain(geometry)) - 1) * Math.pow(Math.sin(a * .5), 2);
+        return 1 + (1.0 - 1) * Math.pow(Math.sin(a * .5), 2);
     }
     private Forge1201CurvedProjection() { }
 
@@ -56,7 +56,7 @@ public final class Forge1201CurvedProjection {
             }
         }
         double z0 = bounds.minZ - camera.z, z1 = bounds.maxZ - camera.z;
-        double factor = Math.min(1, 2 / gain(geometry));
+        double factor = 1.0;
         return new AABB(minX, minY, Math.min(z0, z0 * factor),
                 maxX, maxY, Math.max(z1, z1 * factor));
     }
