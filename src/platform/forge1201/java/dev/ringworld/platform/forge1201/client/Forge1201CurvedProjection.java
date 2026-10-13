@@ -57,9 +57,11 @@ public final class Forge1201CurvedProjection {
             }
         }
         double z0 = bounds.minZ - camera.z, z1 = bounds.maxZ - camera.z;
-        double factor = 1.0;
-        return new AABB(minX, minY, Math.min(z0, z0 * factor),
-                maxX, maxY, Math.max(z1, z1 * factor));
+        double factor = Math.max(widthScale(geometry, minAngle), widthScale(geometry, maxAngle));
+        if (minAngle <= -Math.PI && maxAngle >= -Math.PI || minAngle <= Math.PI && maxAngle >= Math.PI)
+            factor = 2.0;
+        return new AABB(minX, minY, Math.min(Math.min(z0, z1), Math.min(z0 * factor, z1 * factor)),
+                maxX, maxY, Math.max(Math.max(z0, z1), Math.max(z0 * factor, z1 * factor)));
     }
 
     private static double visualAngle(double angle, double gain) {
