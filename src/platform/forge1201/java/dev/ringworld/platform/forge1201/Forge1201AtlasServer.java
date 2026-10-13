@@ -162,7 +162,15 @@ public final class Forge1201AtlasServer {
         var g=s.atlas.geometry(); int nz=Math.floorDiv(g.maxWidthZ(),16)-Math.floorDiv(g.minWidthZ(),16)+1, total=g.circumferenceChunks()*nz;
         // Resume from durable cells. Work is bounded even for a mostly complete map.
         for(int work=0;work<256;work++) {
-            int n=s.cursor++%total, cx=n/nz, cz=Math.floorDiv(g.minWidthZ(),16)+n%nz;
+            int n=s.cursor++%total;
+            // Populate the near and opposite arcs alternately. Sequential X scanning
+            // left the entire ceiling empty until half the circumference was generated.
+            int stripe=n/nz;
+            int cx=(stripe%2==0) ? stripe/2 : g.circumferenceChunks()/2+stripe/2;
+            // Sample the centre of the playable width first, expanding towards both rims.
+            int zi=n%nz, middle=nz/2;
+            int offset=(zi%2==0) ? zi/2 : -(zi+1)/2;
+            int cz=Math.floorDiv(g.minWidthZ(),16)+middle+offset;
             int row=(cz*16+4-g.minWidthZ())/8;
             boolean complete=true;
             for(int dz=4;dz<16;dz+=8) {
