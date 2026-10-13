@@ -6,10 +6,10 @@ import net.minecraft.world.phys.Vec3;
 
 /** Forge renderer-only curvature profile; canonical world coordinates stay unchanged. */
 public final class Forge1201CurvedProjection {
-    public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(16, geometry.radius() / 512.0)); }
+    public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(4, geometry.radius() / 1024.0)); }
     public static double radiusAt(RingGeometry geometry, double y) { return geometry.radius() / gain(geometry) + geometry.surfaceReferenceY() - y; }
     private static double widthScale(RingGeometry geometry, double a) {
-        return 1 + (1.0 - 1) * Math.pow(Math.sin(a * .5), 2);
+        return 1.0;
     }
     private Forge1201CurvedProjection() { }
 
