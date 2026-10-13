@@ -12,15 +12,15 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 public final class RingGenerationBoundary {
     /** Five solid columns form each physical side wall. */
     public static final int RIM_THICKNESS = 5;
-    /** Project brief: ten visible bedrock blocks above the reference surface. */
-    public static final int VISIBLE_WALL_HEIGHT = 10;
+    /** Project brief: forty visible bedrock blocks above the reference surface. */
+    public static final int VISIBLE_WALL_HEIGHT = 40;
     /** Shallow island coast immediately inside each wall. */
     public static final int COAST_WIDTH_BLOCKS = 20;
     /** Compatibility aliases kept for older diagnostics/config readers. */
     public static final int APPROACH_CLEARANCE_BLOCKS = COAST_WIDTH_BLOCKS;
     public static final int APPROACH_TRANSITION_BLOCKS = 0;
     /** Increment when rim/coast placement semantics change. */
-    public static final int RIM_STYLE_VERSION = 4;
+    public static final int RIM_STYLE_VERSION = 5;
 
     public static final int SEA_LEVEL_Y = (int)RingGeometry.SURFACE_Y;
     private static final int OUTER_SEABED_Y = SEA_LEVEL_Y - 4;
@@ -150,7 +150,7 @@ public final class RingGenerationBoundary {
      * Finishes the finite band after features have run. In the Overworld the
      * old 64+64 flattened approach is replaced by a twenty-block shallow sea:
      * a sand seabed slopes from Y=63 to Y=60 while the water surface remains
-     * perfectly level at Y=64. The five-column bedrock wall then rises ten
+     * perfectly level at Y=64. The five-column bedrock wall then rises forty
      * visible blocks, with invisible barrier from its crest to build height.
      */
     public static void installRim(ChunkAccess chunk, RingGeometry geometry,
@@ -165,7 +165,7 @@ public final class RingGenerationBoundary {
         if (containsRim(chunk, geometry)) installUniformWalls(chunk, geometry, false);
     }
 
-    /** Fixed exclusive bedrock top: surface Y + ten visible blocks. */
+    /** Fixed exclusive bedrock top: surface Y + forty visible blocks. */
     static int localWallTopExclusive(ChunkAccess chunk, int x, int probeZ) {
         int worldMinY = chunk.getMinBuildHeight();
         int worldTopExclusive = worldMinY + chunk.getHeight();
