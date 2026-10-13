@@ -196,6 +196,9 @@ jobs:
             test -s "forge1201/run-visual/screenshots/$view.png"
           done
 
+      - name: Install visual validation dependency
+        run: python3 -m pip install --user Pillow
+
       - name: Verify far construction is actually visible and changes color
         if: success()
         shell: bash
