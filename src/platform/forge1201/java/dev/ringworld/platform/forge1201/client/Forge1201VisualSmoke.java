@@ -84,9 +84,9 @@ public final class Forge1201VisualSmoke {
         double[] target = VIEWS[stage];
         var geometry = Forge1201ClientTopology.activeGeometry();
         boolean atTarget = serverPositioned && geometry != null
-                && Math.abs(geometry.shortestCircumferenceDelta(mc.player.getX(), target[0])) < 0.5
-                && Math.abs(mc.player.getY() - target[1]) < 0.5
-                && Math.abs(mc.player.getZ() - target[2]) < 0.5
+                && Math.abs(geometry.shortestCircumferenceDelta(mc.player.getX(), target[0])) < 2.0
+                && Math.abs(mc.player.getY() - target[1]) < 1.0
+                && Math.abs(mc.player.getZ() - target[2]) < 2.0
                 && Math.abs(net.minecraft.util.Mth.wrapDegrees(mc.player.getYRot() - target[3])) < 2
                 && Math.abs(mc.player.getXRot() - target[4]) < 2;
         if (!atTarget) {
