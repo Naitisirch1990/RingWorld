@@ -17,7 +17,7 @@ void main() {
     float c=RingLayout.x;
     float dx=mod(Position.x-RingCamera.x+c*.5,c)-c*.5;
     float theta=TAU*dx/c;
-    float gain=max(1.0,min(16.0,c/TAU/512.0));
+    float gain=max(1.0,min(4.0,c/TAU/1024.0));
     float angle=ringAngle(theta,gain);
     float radius=c/TAU/gain;
     float vr=radius+RingLayout.y-Position.y;
