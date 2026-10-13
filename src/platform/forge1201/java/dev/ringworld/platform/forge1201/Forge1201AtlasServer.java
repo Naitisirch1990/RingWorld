@@ -180,12 +180,18 @@ public final class Forge1201AtlasServer {
         // Resume from durable cells. Work is bounded even for a mostly complete map.
         for(int work=0;work<256;work++) {
             int n=s.cursor++%total;
-            // Fill the central playable band on both near and opposite arcs first.
-            // The opposite arc is what makes the ring ceiling visible; a sequential
-            // circumference scan would leave it blank for hours.
-            int stripe=n/nz;
-            int cx=(stripe%2==0) ? stripe/2 : g.circumferenceChunks()/2+stripe/2;
-            int zi=n%nz, middle=nz/2;
+            // Sweep narrow central-width bands along the entire circumference.
+            // This fills a continuous near/opposite roof instead of leaving
+            // transverse full-width strips during partial atlas generation.
+            // Every canonical chunk is still visited once per complete scan.
+            int along=g.circumferenceChunks();
+            int band=n/(along*8);
+            int bandWidth=Math.min(8,nz-band*8);
+            int within=n-band*along*8;
+            int stripe=within/bandWidth;
+            int zi=band*8+within%bandWidth, middle=nz/2;
+            // The upper half starts at ceil(along/2), including odd counts.
+            int cx=(stripe%2==0) ? stripe/2 : (along+1)/2+stripe/2;
             int offset=(zi%2==0) ? zi/2 : -(zi+1)/2;
             int cz=Math.floorDiv(g.minWidthZ(),16)+middle+offset;
             int row=(cz*16+4-g.minWidthZ())/8;
