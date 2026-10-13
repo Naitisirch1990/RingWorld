@@ -42,6 +42,9 @@ public final class Forge1201AtlasServer {
         final long session = UUID.randomUUID().getMostSignificantBits();
         final Map<Long, LevelChunk> loaded = new LinkedHashMap<>();
         final ArrayDeque<Long> sweep = new ArrayDeque<>();
+        // Newly FULL chunks (including Chunky pregeneration) take precedence over
+        // the slow atlas-wide scan; the queue stores positions, not chunk objects.
+        final LinkedHashSet<Long> newlyLoaded = new LinkedHashSet<>();
         final Map<ServerPlayer, Peer> peers = new IdentityHashMap<>();
         final BitSet populated = new BitSet();
         boolean dirty, running = true;
@@ -68,14 +71,19 @@ public final class Forge1201AtlasServer {
         if (e.getLevel() instanceof ServerLevel level && level.dimension() == Level.OVERWORLD
                 && e.getChunk() instanceof LevelChunk chunk) {
             // Queue only. No world mutation or FULL wait inside Forge's pre-promotion callback.
-            state(level).loaded.put(chunk.getPos().toLong(), chunk);
+            State s = state(level);
+            long key = chunk.getPos().toLong();
+            s.loaded.put(key, chunk);
+            s.newlyLoaded.add(key);
         }
     }
     @SubscribeEvent public static void unloaded(ChunkEvent.Unload e) {
         if (e.getLevel() instanceof ServerLevel level && WORLDS.containsKey(level)) {
             State s = WORLDS.get(level);
             if (e.getChunk() instanceof LevelChunk chunk) capture(level, s, chunk);
-            s.loaded.remove(e.getChunk().getPos().toLong());
+            long key = e.getChunk().getPos().toLong();
+            s.loaded.remove(key);
+            s.newlyLoaded.remove(key);
         }
     }
     @SubscribeEvent public static void unload(LevelEvent.Unload e) {
@@ -118,6 +126,15 @@ public final class Forge1201AtlasServer {
     @SubscribeEvent public static void tick(TickEvent.LevelTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !(e.level instanceof ServerLevel level) || level.dimension()!=Level.OVERWORLD) return;
         State s=state(level); s.ticks++;
+        // Chunky can generate many chunks per second. Sample their surfaces as
+        // soon as they become FULL, before the server unloads them again.
+        for (int i=0;i<128 && !s.newlyLoaded.isEmpty();i++) {
+            long key=s.newlyLoaded.iterator().next();
+            s.newlyLoaded.remove(key);
+            LevelChunk chunk=s.loaded.get(key);
+            if (chunk!=null && level.getChunkSource().getChunkNow(chunk.getPos().x,chunk.getPos().z)==chunk)
+                capture(level,s,chunk);
+        }
         if (s.sweep.isEmpty()) s.sweep.addAll(s.loaded.keySet());
         for (int i=0;i<16 && !s.sweep.isEmpty();i++) {
             LevelChunk chunk=s.loaded.get(s.sweep.removeFirst());
