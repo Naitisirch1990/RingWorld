@@ -9,7 +9,8 @@ public final class Forge1201CurvedProjection {
     public static double gain(RingGeometry geometry) { return Math.max(1, Math.min(4, geometry.radius() / 1024.0)); }
     public static double radiusAt(RingGeometry geometry, double y) { return geometry.radius() / gain(geometry) + geometry.surfaceReferenceY() - y; }
     private static double widthScale(RingGeometry geometry, double a) {
-        return 1.0;
+        double t = Math.abs(a) / Math.PI;
+        return 1.0 + Math.pow(Math.max(0.0, 1.0 - Math.abs(t - 1.0)), 4.0);
     }
     private Forge1201CurvedProjection() { }
 
