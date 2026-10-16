@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.ringworldbiomes.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "ringworld_biomes.refmap.json",
+  "mixins": ["NoiseBasedChunkGeneratorMixin", "ChunkGeneratorMixin"],
+  "injectors": { "defaultRequire": 1 }
+}
