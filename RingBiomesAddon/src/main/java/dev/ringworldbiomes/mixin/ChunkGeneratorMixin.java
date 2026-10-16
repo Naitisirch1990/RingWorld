@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ChunkGenerator.class)
 public abstract class ChunkGeneratorMixin {
-    private static final int WALL_HEIGHT = 160;
+    private static final int WALL_HEIGHT = 40;
 
     @Inject(method = "applyBiomeDecoration", at = @At("HEAD"))
     private void ringworldBiomes$prepareRing(WorldGenLevel level, ChunkAccess chunk,
