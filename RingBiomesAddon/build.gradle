@@ -1,0 +1,32 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:6.0.+'
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
+    }
+}
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.spongepowered.mixin'
+
+version = '1.0.0'
+group = 'dev.ringworldbiomes'
+base { archivesName = 'ringworld-biomes-forge-1.20.1' }
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+    runs {
+        server { workingDirectory project.file('run'); args 'nogui'; mods { ringworld_biomes { source sourceSets.main } } }
+    }
+}
+repositories { mavenCentral() }
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.10'
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+mixin { add sourceSets.main, 'ringworld_biomes.refmap.json'; config 'ringworld_biomes.mixins.json' }
+jar { manifest { attributes 'MixinConfigs': 'ringworld_biomes.mixins.json' }; finalizedBy 'reobfJar' }
