@@ -1,0 +1,74 @@
+name: 14-biome add-on validation
+
+on:
+  push:
+    branches: [codex/14-biomas-worldgen]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Build RingWorld Forge 1.20.1
+        run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
+
+      - name: Build 14-biome add-on
+        run: ./gradlew -p RingBiomesAddon build --no-daemon
+
+      - name: Prepare server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p RingBiomesAddon/run/mods
+          found=0
+          for jar in forge1201/build/libs/ringworld-forge-*.jar; do
+            [[ "$jar" == *-sources.jar ]] && continue
+            cp "$jar" RingBiomesAddon/run/mods/
+            found=1
+          done
+          [[ "$found" -eq 1 ]] || { echo 'RingWorld Forge JAR was not built.'; exit 1; }
+          mkdir -p RingBiomesAddon/run
+          printf 'eula=true\n' > RingBiomesAddon/run/eula.txt
+          printf 'motd=RingWorld biomes CI smoke\n' > RingBiomesAddon/run/server.properties
+
+      - name: Boot Forge server with both mods
+        shell: bash
+        run: |
+          set +e
+          timeout 180s ./gradlew -p RingBiomesAddon runServer --no-daemon
+          status=$?
+          set -e
+          log=RingBiomesAddon/run/logs/latest.log
+          if [[ -f "$log" ]] && grep -q 'Done (' "$log" \
+            && ! grep -Eq 'Mixin apply failed|InvalidInjectionException|ModLoadingException|Encountered an unexpected exception' "$log"; then
+            echo "Integrated dedicated-server smoke passed (exit=$status)."
+            exit 0
+          fi
+          echo "Server smoke failed or did not reach readiness (exit=$status)."
+          [[ -f "$log" ]] && tail -n 300 "$log"
+          exit 1
+
+      - name: Upload add-on JAR
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ringworld-14-biomes-forge-1.20.1
+          path: RingBiomesAddon/build/libs/*.jar
+          if-no-files-found: error
