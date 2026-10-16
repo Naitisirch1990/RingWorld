@@ -30,11 +30,11 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Build RingWorld Forge 1.20.1
-        run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
-
       - name: Build 14-biome add-on
         run: ./gradlew -p RingBiomesAddon build --no-daemon
+
+      - name: Build RingWorld Forge 1.20.1
+        run: ./gradlew :forge1201:build -x test -PringBackportCompilerScope=forge1201 --dependency-verification=off --no-daemon
 
       - name: Prepare server smoke test
         shell: bash
