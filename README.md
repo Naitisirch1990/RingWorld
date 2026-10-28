@@ -4,6 +4,14 @@
 
 # RingWorld
 
+### Forge 1.20.1 DETALLE-2B rendering trial
+
+The optional [VISUAL-3 resource patch](patches/forge1201-detail2b-near-handoff/README.md)
+targets the hash-pinned, user-supplied DETALLE-2B JAR. It delays the near Atlas
+transition and fades proxy depth with opacity while preserving the original
+binary's detail extension. It is an isolated GLSL-tested trial, not a visually
+qualified Minecraft release or part of the normal Forge Gradle output.
+
 RingWorld turns Minecraft's Overworld into a finite world that genuinely
 loops back into itself.
 
