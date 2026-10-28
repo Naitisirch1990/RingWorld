@@ -1,5 +1,27 @@
 # Forge 1.20.1 backport status
 
+## Optional DETALLE-2B VISUAL-3 resource trial — 2026-10-28
+
+The user-supplied `ringworld-forge-1.20.1-atlas-v4-DETALLE-2B-PRUEBA.jar`
+contains additional `dev.ringworld.detail` classes not present in this branch.
+The [isolated patch](../patches/forge1201-detail2b-near-handoff/README.md)
+preserves the complete binary and changes only its common Atlas/detail fragment
+shader, with corresponding source and instructions embedded in the output.
+It changes the 55–85% view-radius reveal to the final 16 blocks, computes
+periodic/altitude-aware coverage per fragment, and blends forward depth with
+opacity. Existing detail/coarse coverage and screen dither are preserved.
+
+Mesa EGL (llvmpipe LLVM 20.1.2) passes 42 actual shader/framebuffer checks,
+including production vertex/fragment linking, protected near regions at
+2/6/8/10/16/32 chunks, partially transparent depth versus later real terrain,
+large-quad fragment masking, seam/altitude cases, and complementary detailed/
+coarse fallbacks. This is isolated OpenGL evidence, not a Minecraft/Forge
+startup, gameplay, modpack, performance or in-world visual PASS. A late
+distance-based fade cannot prove current real-section readiness; inspect
+foliage, streaming, high cameras, rims and seam motion before qualification.
+The ordinary Forge build and all historical qualification claims below remain
+separate from this optional, hash-pinned resource-only trial.
+
 ## Current checkpoint — 2026-10-12
 
 This is an unofficial, experimental Forge 47.4.10 / Minecraft 1.20.1 backport,

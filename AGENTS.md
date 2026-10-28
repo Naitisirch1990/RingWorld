@@ -1,5 +1,14 @@
 # RingWorld agent guide
 
+The optional 2026-10-28 DETALLE-2B VISUAL-3 patch is isolated under
+`patches/forge1201-detail2b-near-handoff`. Read its README before changing it.
+Its input binary includes detail classes absent from the Forge branch, so do
+not replace it with a normal branch build or inject its detail-specific shader
+into the base Forge resources. Keep the exact input hash check, byte-for-byte
+class preservation, source inclusion and distinction between isolated EGL
+tests and full Minecraft visual qualification. It is a Forge 1.20.1-only trial;
+it does not claim parity or release support on other Minecraft/loader lines.
+
 Forge alpha 3 rendering repair: keep the road intact, extend the distant atlas
 toward the ring horizon, strengthen its periodic curvature and widen the visual rim.
 `runVisualClient` uses only the disposable CI copy and requires four captures;
