@@ -1,5 +1,16 @@
 # RingWorld agent guide
 
+The 2026-11-09 VOLUME-4 trial is isolated in `patches/forge1201-volume4`.
+Its input is the exact user-provided Overworld-only binary, not a Gradle build
+from this branch. Read its README before changing the sampler, codec, server
+scheduler or renderer adapter. Preserve all Overworld-only classes, saved-world
+formats and geometry. Its v7 detail network requires matching client/server
+updates. Never read live worlds on its worker, force chunk loads, package API
+stubs, remove packet/mesh/byte cache budgets, or describe API-double/EGL tests
+as real Minecraft multiplayer or visual qualification. Keep the older VISUAL-3
+resource-only trial separate; its original byte-preservation rules apply to
+that earlier artifact, not to the explicitly versioned VOLUME-4 detail protocol.
+
 The optional 2026-10-28 DETALLE-2B VISUAL-3 patch is isolated under
 `patches/forge1201-detail2b-near-handoff`. Read its README before changing it.
 Its input binary includes detail classes absent from the Forge branch, so do
