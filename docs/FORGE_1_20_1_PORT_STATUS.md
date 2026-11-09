@@ -1,5 +1,30 @@
 # Forge 1.20.1 backport status
 
+## Optional Overworld-only VOLUME-4 trial — 2026-11-09
+
+The user's latest Overworld-only binary is hash-pinned by the
+[volume patch builder](../patches/forge1201-volume4/README.md).
+Its medium detail is replaced with a saved-occupancy exterior mesh, preserving
+undersides and vertical air gaps rather than joining one top height per column.
+The existing near fade is retained; coarse Atlas reveal changes from 256–320
+to 288–320 blocks. The new v7 detail channel requires matching server/client
+JARs. World/Atlas disk formats, saved dimensions, existing terrain vertex
+shaders and Overworld-only dimension adapters remain unchanged.
+
+The packaged candidate passes 58 Java geometry/codec/saved-region checks,
+25 wire/render-adapter/scheduler checks with API doubles, and Mesa EGL linking
+and rendered-gap/depth checks with its real shaders at a nine-chunk view.
+The actual patched packet codec roundtrips up to 24 KiB and rejects overflow.
+The scheduler tests cover unchanged-revision deduplication, per-player/global
+send budgets, disconnection and worker teardown. Archive checks preserve every
+unrelated input entry and ensure build/test stubs are not runtime classes.
+
+These results are isolated development evidence, not a packaged Minecraft/Forge
+launch or the real two-client/in-world release gates. Night/rain, streaming,
+upward/rim/seam captures, frame pacing, dimension lifecycle and the complete
+modpack remain pending. This is a trial with colored voxel silhouettes, not
+full Minecraft block-model/texture reproduction beyond the real chunk range.
+
 ## Optional DETALLE-2B VISUAL-3 resource trial — 2026-10-28
 
 The user-supplied `ringworld-forge-1.20.1-atlas-v4-DETALLE-2B-PRUEBA.jar`

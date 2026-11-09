@@ -4,6 +4,14 @@
 
 # RingWorld
 
+### Forge 1.20.1 Overworld-only VOLUME-4 trial
+
+The optional [medium-distance volume patch](patches/forge1201-volume4/README.md)
+preserves air under floating structures instead of extruding heightfield walls.
+It targets the exact user-supplied Overworld-only binary and requires the same
+new JAR on server and clients. Packaged geometry/wire/adapter and EGL tests pass;
+full Minecraft/Forge/modpack visual qualification remains pending.
+
 ### Forge 1.20.1 DETALLE-2B rendering trial
 
 The optional [VISUAL-3 resource patch](patches/forge1201-detail2b-near-handoff/README.md)
